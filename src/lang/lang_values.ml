@@ -1,4 +1,4 @@
-(*****************************************************************************
+(****************************************************************************
 
   Liquidsoap, a programmable audio stream generator.
   Copyright 2003-2011 Savonet team
@@ -43,6 +43,7 @@ let ref_t ~pos ~level t =
 let zero_t = T.make T.Zero
 let succ_t t = T.make (T.Succ t)
 let variable_t = T.make T.Variable
+let record_t l = T.make (T.Record l)
 
 let rec type_of_int n = if n=0 then zero_t else succ_t (type_of_int (n-1))
 
@@ -134,6 +135,10 @@ and in_term =
   | List    of term list
   | Record  of (string * term) list
   | Field   of term * string
+  (* [Replace_field (r,x,v)] does the same thing as { r with x = v } in OCaml,
+     excepting that [r] is set to the empty record if it was not previously
+     defined. *)
+  | Replace_field of string * string * term
   | Product of term * term
   | Ref     of term
   | Get     of term
@@ -143,14 +148,14 @@ and in_term =
   | Seq     of term * term
   | App     of term * (string * term) list
   | Fun     of Vars.t *
-               (string*string*T.t*term option) list *
-               term
-               (* [fun ~l1:x1 .. ?li:(xi=defi) .. -> body] =
-                * [Fun (V, [(l1,x1,None)..(li,xi,Some defi)..], body)]
-                * The first component [V] is the list containing all
-                * variables occurring in the function. It is used to
-                * restrict the environment captured when a closure is
-                * formed. *)
+      (string*string*T.t*term option) list *
+      term
+(* [fun ~l1:x1 .. ?li:(xi=defi) .. -> body] =
+ * [Fun (V, [(l1,x1,None)..(li,xi,Some defi)..], body)]
+ * The first component [V] is the list containing all
+ * variables occurring in the function. It is used to
+ * restrict the environment captured when a closure is
+ * formed. *)
 
 (* Only used for printing very simple functions. *)
 let rec is_ground x = match x.term with
@@ -185,13 +190,14 @@ let rec print_term v = match v.term with
           tl
       in
         (print_term hd)^"("^(String.concat "," tl)^")"
-  | Let _ | Seq _ | Get _ | Set _ | Field _ -> assert false
+  | Let _ | Seq _ | Get _ | Set _ | Field _ | Replace_field _ -> assert false
 
 let rec free_vars tm = match tm.term with
   | Unit | Bool _ | Int _ | String _ | Float _ | Encoder _ ->
       Vars.empty
   | Var x -> Vars.singleton x
   | Ref r | Get r | Field (r,_) -> free_vars r
+  | Replace_field (r,_,v) -> free_vars v
   | Product (a,b) | Seq (a,b) | Set (a,b) ->
       Vars.union (free_vars a) (free_vars b)
   | List l ->
@@ -247,6 +253,9 @@ let rec check_unused ~lib tm =
     | Seq (a,b) -> check ~toplevel (check v a) b
     | List l -> List.fold_left check v l
     | Record r -> List.fold_left (fun v (_,t) -> check v t) v r
+    | Replace_field (r,x,e) ->
+      let v = Vars.remove r v in
+      check v e
     | App (hd,l) ->
         let v = check v hd in
           List.fold_left (fun v (lbl,t) -> check v t) v l
@@ -328,6 +337,9 @@ let rec map_types f (gen:'a list) tm = match tm.term with
   | Field (r,x) ->
       { t = f gen tm.t ;
         term = Field (map_types f gen r, x) }
+  | Replace_field (r,x,v) ->
+      { t = f gen tm.t ;
+        term = Replace_field (r,x,map_types f gen v) }
   | App (hd,l) ->
       { t = f gen tm.t ;
         term = App (map_types f gen hd,
@@ -358,6 +370,9 @@ let rec fold_types f gen x tm = match tm.term with
   (* In the next cases, don't care about tm.t, nothing "new" in it. *)
   | Ref r | Get r | Field (r,_) ->
       fold_types f gen x r
+  | Replace_field (_,_,v) ->
+    (* TODO: is this correct? *)
+    fold_types f gen x v
   | Product (a,b) | Seq (a,b) | Set (a,b) ->
       fold_types f gen (fold_types f gen x a) b
   | App (tm,l) ->
@@ -583,8 +598,32 @@ let rec check ?(print_toplevel=false) ~level ~env e =
   | Field (r,x) ->
     check ~level ~env r ;
     let v = T.fresh_evar ~level ~pos in
-    r.t <: mk (T.Record [x,v]);
-    e.t <: v
+    e.t <: v;
+    r.t <: mk (T.Record [x,v])
+  | Replace_field (r,x,v) ->
+    (* TODO: check that this is correct... *)
+    check ~level ~env v;
+    let generalized,orig =
+      try
+        List.assoc r env
+      with
+        | Not_found ->
+          begin match builtins#get r with
+            | Some (g,v) -> g,v.V.t
+            | None -> [],record_t []
+          end
+    in
+    let rt = T.instantiate ~level ~generalized orig in
+    mk (T.Record []) <: rt;
+    let rt =
+      match (T.deref rt).T.descr with
+        | T.Record r -> r
+        | _ -> assert false
+    in
+    let rt = List.filter (fun (x',_) -> x' <> x) rt in
+    let rt = (x,v.t)::rt in
+    let rt = mk (T.Record rt) in
+    e.t >: rt
   | Product (a,b) ->
       check ~level ~env a ; check ~level ~env b ;
       e.t >: mk (T.Product (a.t,b.t))
@@ -828,6 +867,23 @@ let rec eval ~env tm =
           | V.Record r -> List.assoc x r
           | _ -> assert false
         end
+      | Replace_field (r,x,v) ->
+        (* TODO: check this *)
+        let r =
+          try
+            lookup env r tm.t
+          with
+            | Not_found -> mk (V.Record [])
+        in
+        let r =
+          match r.V.value with
+            | V.Record r -> r
+            | _ -> assert false
+        in
+        let r = List.filter (fun (x',_) -> x' <> x') r in
+        let v = eval ~env v in
+        let r = (x,v)::r in
+        mk (V.Record r)
       | Ref v -> mk (V.Ref (ref (eval ~env v)))
       | Get r ->
           begin match (eval ~env r).V.value with

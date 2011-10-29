@@ -180,6 +180,8 @@ val of_product_t : t -> t * t
 val list_t     : t -> t
 val of_list_t  : t -> t
 
+val record_t   : (string * t) list -> t
+
 val zero_t     : t
 val variable_t : t
 val succ_t     : t -> t

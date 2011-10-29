@@ -422,6 +422,9 @@ let iter_sources f v =
     | Term.List l -> List.iter (iter_term env) l
     | Term.Record r -> List.iter (fun (_,a) -> iter_term env a) r
     | Term.Field (r,_) -> iter_term env r
+    | Term.Replace_field (r,x,v) ->
+      (* TODO: iter on r too *)
+      iter_term env v
     | Term.Ref a | Term.Get a -> iter_term env a
     | Term.Let {Term.def=a;body=b}
     | Term.Product (a,b) | Term.Seq (a,b) | Term.Set (a,b) ->

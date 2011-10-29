@@ -440,6 +440,10 @@ binding:
        let body = $3 in
          (Doc.none (),[]),$1,body
     }
+  | VAR FIELD VAR GETS expr {
+    let body = mk (Replace_field ($1,$3,$5)) in
+    (Doc.none (),[]),$1,body
+  }
   | DEF VAR g exprs END {
       let body = $4 in
         $1,$2,body
