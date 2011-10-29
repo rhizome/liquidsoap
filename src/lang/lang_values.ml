@@ -583,7 +583,7 @@ let rec check ?(print_toplevel=false) ~level ~env e =
   | Field (r,x) ->
     check ~level ~env r ;
     let v = T.fresh_evar ~level ~pos in
-    r.t >: mk (T.Record [x,v]);
+    r.t <: mk (T.Record [x,v]);
     e.t <: v
   | Product (a,b) ->
       check ~level ~env a ; check ~level ~env b ;
