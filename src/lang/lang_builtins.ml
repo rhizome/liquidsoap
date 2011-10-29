@@ -1566,6 +1566,9 @@ let rec to_json_compact v =
                 (String.concat "," 
                   (List.map to_json_compact l))
         end
+    | Lang.Record r ->
+      let r = List.map (fun (x,v) -> Printf.sprintf "\"%s\":%s" x (to_json_compact v)) r in
+      Printf.sprintf "{%s}" (String.concat "," r)
     | Lang.Product (p,q) -> 
        Printf.sprintf "[%s,%s]"  (to_json_compact p) (to_json_compact q)
     | Lang.Source _ -> "\"<source>\""

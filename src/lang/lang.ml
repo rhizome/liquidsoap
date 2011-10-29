@@ -48,6 +48,8 @@ let of_list_t t = match (T.deref t).T.descr with
   | T.List t -> t
   | _ -> assert false
 
+let record_t t = T.make (T.Record t)
+
 let metadata_t = list_t (product_t string_t string_t)
 
 let zero_t = Term.zero_t
@@ -223,6 +225,7 @@ let string i = mk string_t (String i)
 let product a b = mk (product_t a.t b.t) (Product (a,b))
 
 let list ~t l = mk (list_t t) (List l)
+let record ~t r = mk (record_t t) (Record r)
 
 let source s =
   mk (source_t (kind_type_of_frame_kind s#kind)) (Source s)
@@ -418,6 +421,7 @@ let iter_sources f v =
     | Term.Int _ | Term.Float _ | Term.Encoder _ -> ()
     | Term.List l -> List.iter (iter_term env) l
     | Term.Record r -> List.iter (fun (_,a) -> iter_term env a) r
+    | Term.Field (r,_) -> iter_term env r
     | Term.Ref a | Term.Get a -> iter_term env a
     | Term.Let {Term.def=a;body=b}
     | Term.Product (a,b) | Term.Seq (a,b) | Term.Set (a,b) ->
