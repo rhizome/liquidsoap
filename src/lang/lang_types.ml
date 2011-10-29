@@ -127,6 +127,7 @@ and descr =
   | Arrow     of (bool*string*t) list * t
   | EVar      of int*constraints (* type variable *)
   | Link      of t
+  | Record    of (string * t) list
 
 type repr = [
   | `Constr  of string * (variance*repr) list
@@ -137,6 +138,7 @@ type repr = [
   | `Arrow     of (bool*string*repr) list * repr
   | `EVar      of string*constraints (* existential variable *)
   | `UVar      of string*constraints (* universal variable *)
+  | `Record of (string*repr) list
   | `Ellipsis       (* omitted sub-term *)
   | `Range_Ellipsis (* omitted sub-terms (in a list, e.g. list of args) *)
 ]
@@ -233,6 +235,7 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
             else
               evar id c
         | Link t -> repr t
+        | Record r -> `Record (List.map (fun (x,t) -> x, repr t) r)
   in
     repr t
 
@@ -296,6 +299,20 @@ let print_repr f t =
         let vars = print ~par:false vars t in
         Format.fprintf f "]@]" ;
         vars
+    | `Record r ->
+      Format.fprintf f "@[<1>[";
+      let _,vars =
+        List.fold_left
+          (fun (first,vars) (lbl,kind) ->
+            if not first then Format.fprintf f ";@," ;
+            Format.fprintf f "%s:" lbl ;
+            let vars = print ~par:true vars kind in
+            false, vars)
+          (true,vars)
+          r
+      in
+      Format.fprintf f "]@]";
+      vars
     | `Variable ->
         Format.fprintf f "*" ;
         vars
@@ -430,7 +447,7 @@ let rec occur_check a b =
           occur_check a t
       | EVar _ ->
           (* In normal type inference level -1 should never arise.
-           * Unfortunately we can't check it strictly because this code 
+           * Unfortunately we can't check it strictly because this code
            * is also used to process type annotations, which make use
            * of unknown levels. Also note that >=0 levels can arise
            * when processing type annotations, because of builtins. *)
@@ -440,6 +457,7 @@ let rec occur_check a b =
             b.level <- min b.level a.level
       | Ground _ -> ()
       | Link _ -> assert false
+      | Record r -> List.iter (fun (_,t) -> occur_check a t) r
 
 (* Perform [a := b] where [a] is an EVar, check that [type(a)<:type(b)]. *)
 let rec bind a0 b =
@@ -654,6 +672,27 @@ let rec (<:) a b =
           | Error (a,b) -> raise (Error (`Product (`Ellipsis,a),
                                          `Product (`Ellipsis,b)))
         end
+    | Record r1, Record r2 ->
+      List.iter
+        (fun (x,t1) ->
+          try
+            let t2 = List.assoc x r2 in
+            try t1 <: t2 with
+              | Error (a,b) ->
+                let r1 = List.map (fun (x',_) -> x', if x' = x then a else `Ellipsis) r1 in
+                let r2 = List.map (fun (x',_) -> x', if x' = x then b else `Ellipsis) r2 in
+                raise (Error (`Record r1, `Record r2))
+          with
+            | Not_found ->
+              let r1 = List.map (fun (x',t1) -> x', if x' = x then repr t1 else `Ellipsis) r1 in
+              let r2 =
+                (* Handles both records and non-records *)
+                let fo = ref false in
+                let filter_out _ = !fo || (fo := true; false) in
+                repr ~filter_out (deref b)
+              in
+              raise (Error (`Record r1, r2))
+        ) r1
     | Zero, Zero -> ()
     | Zero, Variable -> ()
     | Succ t1, Succ t2 ->
@@ -812,6 +851,7 @@ let filter_vars f t =
     | EVar (i,constraints) ->
         if f t then (i,constraints)::l else l
     | Link _ -> assert false
+    | Record r -> List.fold_left (fun l (x,t) -> aux l t) l r
   in
     aux [] t
 
@@ -850,6 +890,8 @@ let copy_with subst t =
              * and to make it possible to check if the application left
              * the type unchanged. *)
             cp (Link (aux t))
+        | Record r ->
+          cp (Record (List.map (fun (x,t) -> x, aux t) r))
   in
     aux t
 

@@ -122,7 +122,7 @@ rule token = parse
 
   | "def"    { PP_DEF }
   | "fun"    { FUN }
-  | '='      { GETS }
+  | "="      { GETS }
   | "end"    { END }
   | "begin"  { BEGIN }
   | "if"     { IF }
@@ -159,6 +159,7 @@ rule token = parse
   | ':' { COLON }
   | ';' { SEQ }
   | ";;" { SEQSEQ }
+  | '$' { FIELD }
   | "~" { TILD }
   | "-" { MINUS }
   | "not" { NOT }

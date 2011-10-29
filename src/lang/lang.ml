@@ -417,6 +417,7 @@ let iter_sources f v =
     | Term.Unit | Term.Bool _ | Term.String _
     | Term.Int _ | Term.Float _ | Term.Encoder _ -> ()
     | Term.List l -> List.iter (iter_term env) l
+    | Term.Record r -> List.iter (fun (_,a) -> iter_term env a) r
     | Term.Ref a | Term.Get a -> iter_term env a
     | Term.Let {Term.def=a;body=b}
     | Term.Product (a,b) | Term.Seq (a,b) | Term.Set (a,b) ->
@@ -438,6 +439,7 @@ let iter_sources f v =
     | Source s -> f s
     | Unit | Bool _ | Int _ | Float _ | String _ | Request _ | Encoder _ -> ()
     | List l -> List.iter iter_value l
+    | Record r -> List.iter (fun (_,a) -> iter_value a) r
     | Ref a -> iter_value !a
     | Product (a,b) ->
         iter_value a ; iter_value b

@@ -44,6 +44,7 @@ and descr =
   | Arrow of (bool * string * t) list * t
   | EVar of int * constraints
   | Link of t
+  | Record of (string * t) list
 val make : ?pos:pos option -> ?level:int -> descr -> t
 val dummy : t
 

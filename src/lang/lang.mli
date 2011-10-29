@@ -40,6 +40,7 @@ and in_value =
   | Request of Request.t
   | Encoder of Encoder.format
   | List    of value list
+  | Record  of (string * value) list
   | Product of value * value
   | Ref     of value ref
   | Fun     of (string * string * value option) list *

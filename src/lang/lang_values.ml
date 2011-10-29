@@ -132,6 +132,8 @@ and in_term =
   | Float   of float
   | Encoder of Encoder.format
   | List    of term list
+  | Record  of (string * term) list
+  | Field   of term * string
   | Product of term * term
   | Ref     of term
   | Get     of term
@@ -167,6 +169,8 @@ let rec print_term v = match v.term with
   | Encoder e -> Encoder.string_of_format e
   | List l ->
       "["^(String.concat ", " (List.map print_term l))^"]"
+  | Record r ->
+    "["^String.concat "; " (List.map (fun (_,t) -> print_term t) r)^"]"
   | Product (a,b) ->
       Printf.sprintf "(%s,%s)" (print_term a) (print_term b)
   | Ref a ->
@@ -181,17 +185,19 @@ let rec print_term v = match v.term with
           tl
       in
         (print_term hd)^"("^(String.concat "," tl)^")"
-  | Let _ | Seq _ | Get _ | Set _ -> assert false
+  | Let _ | Seq _ | Get _ | Set _ | Field _ -> assert false
 
 let rec free_vars tm = match tm.term with
   | Unit | Bool _ | Int _ | String _ | Float _ | Encoder _ ->
       Vars.empty
   | Var x -> Vars.singleton x
-  | Ref r | Get r -> free_vars r
+  | Ref r | Get r | Field (r,_) -> free_vars r
   | Product (a,b) | Seq (a,b) | Set (a,b) ->
       Vars.union (free_vars a) (free_vars b)
   | List l ->
       List.fold_left (fun v t -> Vars.union v (free_vars t)) Vars.empty l
+  | Record r ->
+    List.fold_left (fun v (_,t) -> Vars.union v (free_vars t)) Vars.empty r
   | App (hd,l) ->
       List.fold_left
         (fun v (_,t) -> Vars.union v (free_vars t))
@@ -236,11 +242,11 @@ let rec check_unused ~lib tm =
   let rec check ?(toplevel=false) v tm = match tm.term with
     | Var s -> Vars.remove s v
     | Unit | Bool _ | Int _ | String _ | Float _ | Encoder _ -> v
-    | Ref r -> check v r
-    | Get r -> check v r
+    | Ref r | Get r | Field (r,_) -> check v r
     | Product (a,b) | Set (a,b) -> check (check v a) b
     | Seq (a,b) -> check ~toplevel (check v a) b
     | List l -> List.fold_left check v l
+    | Record r -> List.fold_left (fun v (_,t) -> check v t) v r
     | App (hd,l) ->
         let v = check v hd in
           List.fold_left (fun v (lbl,t) -> check v t) v l
@@ -316,6 +322,12 @@ let rec map_types f (gen:'a list) tm = match tm.term with
   | List l ->
       { t = f gen tm.t ;
         term = List (List.map (map_types f gen) l) }
+  | Record r ->
+      { t = f gen tm.t ;
+        term = Record (List.map (fun (x,t) -> x, map_types f gen t) r) }
+  | Field (r,x) ->
+      { t = f gen tm.t ;
+        term = Field (map_types f gen r, x) }
   | App (hd,l) ->
       { t = f gen tm.t ;
         term = App (map_types f gen hd,
@@ -341,8 +353,10 @@ let rec fold_types f gen x tm = match tm.term with
       f gen x tm.t
   | List l ->
       List.fold_left (fun x tm -> fold_types f gen x tm) (f gen x tm.t) l
+  | Record r ->
+      List.fold_left (fun x (_,tm) -> fold_types f gen x tm) (f gen x tm.t) r
   (* In the next cases, don't care about tm.t, nothing "new" in it. *)
-  | Ref r | Get r ->
+  | Ref r | Get r | Field (r,_) ->
       fold_types f gen x r
   | Product (a,b) | Seq (a,b) | Set (a,b) ->
       fold_types f gen (fold_types f gen x a) b
@@ -379,6 +393,7 @@ struct
     | Request of Request.t
     | Encoder of Encoder.format
     | List    of value list
+    | Record  of (string * value) list
     | Product of value * value
     | Ref     of value ref
     (** The first environment contains the parameters already passed
@@ -404,6 +419,8 @@ struct
     | Encoder e -> Encoder.string_of_format e
     | List l ->
         "["^(String.concat ", " (List.map print_value l))^"]"
+    | Record r ->
+        "["^(String.concat "; " (List.map (fun (x,v) -> x ^ " = " ^ print_value v) r))^"]"
     | Ref a ->
         Printf.sprintf "ref(%s)" (print_value !a)
     | Product (a,b) ->
@@ -437,6 +454,9 @@ struct
     | List l ->
         { t = f gen v.t ;
           value = List (List.map (map_types f gen) l) }
+    | Record r ->
+        { t = f gen v.t ;
+          value = Record (List.map (fun (x,v) -> x, map_types f gen v) r) }
     | Fun (p,applied,env,tm) ->
         let aux = function
           | lbl, var, None -> lbl, var, None
@@ -517,10 +537,10 @@ let add_task, pop_tasks =
     (fun () ->
        try while true do (Queue.take q) () done with Queue.Empty -> ())
 
-(* Type-check an expression.
- * [level] should be the sum of the lengths of [env] and [builtins],
- * that is the size of the typing context, that is the number of surrounding
- * abstractions. *)
+(** Type-check an expression.
+  * [level] should be the sum of the lengths of [env] and [builtins],
+  * that is the size of the typing context, that is the number of surrounding
+  * abstractions. *)
 let rec check ?(print_toplevel=false) ~level ~env e =
   (** The role of this function is not only to type-check but also to assign
     * meaningful levels to type variables, and unify the types of
@@ -555,6 +575,16 @@ let rec check ?(print_toplevel=false) ~level ~env e =
       let v = T.fresh_evar ~level ~pos in
         e.t >: mk (T.List v) ;
         List.iter (fun item -> item.t <: v) l
+  | Record r ->
+    List.iter (fun (_,tm) -> check ~level ~env tm) r ;
+    let tr = List.map (fun (x,_) -> x, T.fresh_evar ~level ~pos) r in
+    e.t >: mk (T.Record tr) ;
+    List.iter (fun (x,item) -> item.t <: List.assoc x tr) r
+  | Field (r,x) ->
+    check ~level ~env r ;
+    let v = T.fresh_evar ~level ~pos in
+    r.t >: mk (T.Record [x,v]);
+    e.t <: v
   | Product (a,b) ->
       check ~level ~env a ; check ~level ~env b ;
       e.t >: mk (T.Product (a.t,b.t))
@@ -792,6 +822,12 @@ let rec eval ~env tm =
       | Encoder x -> mk (V.Encoder x)
       | List l -> mk (V.List (List.map (eval ~env) l))
       | Product (a,b) -> mk (V.Product (eval ~env a, eval ~env b))
+      | Record r -> mk (V.Record (List.map (fun (x,v) -> x, eval ~env v) r))
+      | Field (r,x) ->
+        begin match (eval ~env r).V.value with
+          | V.Record r -> List.assoc x r
+          | _ -> assert false
+        end
       | Ref v -> mk (V.Ref (ref (eval ~env v)))
       | Get r ->
           begin match (eval ~env r).V.value with

@@ -155,6 +155,7 @@
 %token OGG FLAC VORBIS VORBIS_CBR VORBIS_ABR THEORA DIRAC SPEEX
 %token WAV VOAACENC AACPLUS MP3 MP3_VBR MP3_ABR EXTERNAL
 %token EOF
+%token FIELD
 %token BEGIN END GETS TILD
 %token <Doc.item * (string*string) list> DEF
 %token IF THEN ELSE ELSIF
@@ -174,6 +175,7 @@
 %token <string list> PP_COMMENT
 
 %nonassoc YIELDS       /* fun x -> (x+x) */
+%left FIELD            /* (r.x).y */
 %right SET             /* expr := (expr + expr), expr := (expr := expr) */
 %nonassoc REF          /* ref (1+2) */
 %left BIN0             /* ((x+(y*z))==3) or ((not a)==b) */
@@ -271,6 +273,8 @@ expr:
   | FLOAT                            { mk (Float  $1) }
   | STRING                           { mk (String $1) }
   | list                             { mk (List $1) }
+  | record                           { mk (Record $1) }
+  | expr FIELD VAR                   { mk (Field ($1, $3)) }
   | REF expr                         { mk (Ref $2) }
   | GET expr                         { mk (Get $2) }
   | expr SET expr                    { mk (Set ($1,$3)) }
@@ -278,7 +282,7 @@ expr:
   | MP3_VBR app_opt                  { mk_mp3_vbr $2 }
   | MP3_ABR app_opt                  { mk_mp3_abr $2 }
   | AACPLUS app_opt                  { mk_aacplus $2 }
-  | VOAACENC app_opt                  { mk_voaacenc $2 }
+  | VOAACENC app_opt                 { mk_voaacenc $2 }
   | FLAC app_opt                     { mk_flac $2 }
   | EXTERNAL app_opt                 { mk_external $2 }
   | WAV app_opt                      { mk_wav $2 }
@@ -355,6 +359,8 @@ cexpr:
   | FLOAT                            { mk (Float  $1) }
   | STRING                           { mk (String $1) }
   | list                             { mk (List $1) }
+  | record                           { mk (Record $1) }
+  | cexpr FIELD VAR                  { mk (Field ($1, $3)) }
   | REF expr                         { mk (Ref $2) }
   | GET expr                         { mk (Get $2) }
   | cexpr SET expr                   { mk (Set ($1,$3)) }
@@ -410,6 +416,14 @@ inner_list:
   | expr COMMA inner_list  { $1::$3 }
   | expr                   { [$1] }
   |                        { [] }
+
+record:
+    /* TODO: check that we don't have the same label defined twice! */
+  | LBRA inner_record RBRA { $2 }
+inner_record:
+  | VAR GETS expr SEQ inner_record { ($1,$3)::$5 }
+  | VAR GETS expr { [$1,$3] }
+
 
 app_list_elem:
   | VAR GETS expr { $1,$3 }
