@@ -48,6 +48,12 @@
     let fv = Lang_values.free_vars ~bound body in
       mk ?pos (Fun (fv,args,body))
 
+  let replace_field (r,x,v) =
+    (* Small optimization. *)
+    match x with
+      | [] -> v
+      | _ -> mk (Replace_field (r,x,v))
+
   (** Time intervals *)
 
   let time_units = [| 7*24*60*60 ; 24*60*60 ; 60*60 ; 60 ; 1 |]
@@ -436,28 +442,30 @@ app_list:
   | app_list_elem COMMA app_list { $1::$3 }
 
 binding:
-  | VAR opt_field GETS expr {
-       let body = $2 $1 $4 in
-         (Doc.none (),[]),$1,body
+  | VAR fields GETS expr {
+      let body = replace_field ($1,$2,$4) in
+        (Doc.none (),[]),$1,body
     }
-  | DEF VAR opt_field g exprs END {
-      let body = $3 $2 $5 in
+  | DEF VAR fields g exprs END {
+      let body = replace_field ($2,$3,$5) in
         $1,$2,body
     }
-  | DEF VARLPAR arglist RPAR g exprs END {
+  | DEF var_fields_par arglist RPAR g exprs END {
+      let var, fields = $2 in
       let arglist = $3 in
-      let body = mk_fun arglist $6 in
-        $1,$2,body
-    }
-  | DEF VAR FIELD VARLPAR arglist RPAR g exprs END {
-      let arglist = $5 in
-      let body = mk (Replace_field ($2,$4,mk_fun arglist $8)) in
-        $1,$2,body
+      let body = replace_field (var, fields, mk_fun arglist $6) in
+        $1,var,body
     }
 
-opt_field:
-  | { fun x v -> v }
-  | FIELD VAR { fun r v -> mk (Replace_field (r,$2,v)) }
+fields:
+  | { [] }
+  | FIELD VAR fields { $2::$3 }
+var_fields_par:
+  | VARLPAR { $1,[] }
+  | VAR fields_par { $1,$2 }
+fields_par:
+  | FIELD VARLPAR { [$2] }
+  | FIELD VAR fields_par { $2::$3 }
 
 arglist:
   |                   { [] }

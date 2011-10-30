@@ -137,8 +137,9 @@ and in_term =
   | Field   of term * string
   (* [Replace_field (r,x,v)] does the same thing as { r with x = v } in OCaml,
      excepting that [r] is set to the empty record if it was not previously
-     defined. *)
-  | Replace_field of string * string * term
+     defined. [x] is a list and x=x1::x2::x3 defines r.x1.x2.x3. By convention
+     Replace_field reduces to v when x is []. *)
+  | Replace_field of string * (string list) * term
   | Product of term * term
   | Ref     of term
   | Get     of term
@@ -600,9 +601,11 @@ let rec check ?(print_toplevel=false) ~level ~env e =
     let v = T.fresh_evar ~level ~pos in
     e.t <: v;
     r.t <: mk (T.Record [x,v])
+  | Replace_field (_,[],v) ->
+    check ~level ~env v
   | Replace_field (r,x,v) ->
-    (* TODO: check that this is correct... *)
     check ~level ~env v;
+    (* Try to resolve r and default to empty record. *)
     let generalized,orig =
       try
         List.assoc r env
@@ -614,15 +617,26 @@ let rec check ?(print_toplevel=false) ~level ~env e =
           end
     in
     let rt = T.instantiate ~level ~generalized orig in
-    mk (T.Record []) <: rt;
+    (* Replace the type of the field in the last record. *)
     let rt =
-      match (T.deref rt).T.descr with
-        | T.Record r -> r
-        | _ -> assert false
+      let rec aux x rt =
+        match x with
+          | x::xx ->
+            mk (T.Record []) <: rt;
+            let rt =
+              match (T.deref rt).T.descr with
+                | T.Record r -> r
+                | _ -> assert false
+            in
+            let rxt = try List.assoc x rt with Not_found -> mk (T.Record []) in
+            let rxt = if xx = [] then v.t else aux xx rxt in
+            let rt = List.filter (fun (x',_) -> x' <> x) rt in
+            let rt = (x,rxt)::rt in
+            mk (T.Record rt)
+          | [] -> assert false
+      in
+      aux x rt
     in
-    let rt = List.filter (fun (x',_) -> x' <> x) rt in
-    let rt = (x,v.t)::rt in
-    let rt = mk (T.Record rt) in
     e.t >: rt
   | Product (a,b) ->
       check ~level ~env a ; check ~level ~env b ;
@@ -868,22 +882,32 @@ let rec eval ~env tm =
           | _ -> assert false
         end
       | Replace_field (r,x,v) ->
-        (* TODO: check this *)
+        let rec aux r = function
+          | x::xx ->
+            let r =
+              match r.V.value with
+                | V.Record r -> r
+                | _ -> assert false
+            in
+            let rx = try List.assoc x r with Not_found -> mk (V.Record []) in
+            let r = List.filter (fun (x',_) -> x' <> x') r in
+            let v =
+              if xx = [] then
+                eval ~env v
+              else
+                aux rx xx
+            in
+            let r = (x,v)::r in
+            mk (V.Record r)
+          | [] -> eval ~env v
+        in
         let r =
           try
             lookup env r tm.t
           with
             | Not_found -> mk (V.Record [])
         in
-        let r =
-          match r.V.value with
-            | V.Record r -> r
-            | _ -> assert false
-        in
-        let r = List.filter (fun (x',_) -> x' <> x') r in
-        let v = eval ~env v in
-        let r = (x,v)::r in
-        mk (V.Record r)
+        aux r x
       | Ref v -> mk (V.Ref (ref (eval ~env v)))
       | Get r ->
           begin match (eval ~env r).V.value with
