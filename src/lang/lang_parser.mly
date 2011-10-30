@@ -48,13 +48,6 @@
     let fv = Lang_values.free_vars ~bound body in
       mk ?pos (Fun (fv,args,body))
 
-  let mk_fields v xx =
-    let rec aux v = function
-      | [] -> v
-      | x::xx -> aux (mk (Field (v, x))) xx
-    in
-    aux v xx
-
   let replace_field (r,x,v) =
     (* Small optimization. *)
     match x with
@@ -304,11 +297,8 @@ expr:
   | LPAR RPAR                        { mk Unit }
   | LPAR expr COMMA expr RPAR        { mk (Product ($2,$4)) }
   | VAR                              { mk (Var $1) }
-  | var_fields_par app_list RPAR     {
-    let var, fields = $1 in
-    let var = mk_fields (mk ~pos:(1,1) (Var var)) fields in
-    mk (App (var,$2))
-  }
+  | VARLPAR app_list RPAR            { mk (App (mk ~pos:(1,1) (Var $1),$2)) }
+  | expr FIELD VARLPAR app_list RPAR { mk (App (mk (Field ($1, $3)), $4)) }
   | VARLBRA expr RBRA                { mk (App (mk ~pos:(1,1) (Var "_[_]"),
                                            ["",$2;
                                             "",mk ~pos:(1,1) (Var $1)])) }
@@ -394,11 +384,8 @@ cexpr:
   | LPAR RPAR                        { mk Unit }
   | LPAR expr COMMA expr RPAR        { mk (Product ($2,$4)) }
   | VAR                              { mk (Var $1) }
-  | var_fields_par app_list RPAR            {
-    let var, fields = $1 in
-    let var = mk_fields (mk ~pos:(1,1) (Var var)) fields in
-    mk (App (var,$2))
-  }
+  | VARLPAR app_list RPAR            { mk (App (mk ~pos:(1,1) (Var $1),$2)) }
+  | cexpr FIELD VARLPAR app_list RPAR { mk (App (mk (Field ($1, $3)), $4)) }
   | VARLBRA expr RBRA                { mk (App (mk ~pos:(1,1) (Var "_[_]"),
                                            ["",$2;
                                             "",mk ~pos:(1,1) (Var $1)])) }
