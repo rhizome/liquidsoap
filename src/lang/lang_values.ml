@@ -508,12 +508,50 @@ struct
         r := map_types f gen !r ;
         v
 
+  let empty_record () =
+    { t = T.make (T.Record []); value = Record [] }
 end
 
 (** {1 Built-in values and toplevel definitions} *)
 
-let builtins : (((int*T.constraints) list) * V.value) Plug.plug
-  = Plug.create ~duplicates:false ~doc:"scripting values" "scripting values"
+let builtins : (((int*T.constraints) list) * V.value) Plug.plug =
+  (* This function is used to merge the new value with the old record. *)
+  let split_name r x (c,v) =
+    let rec aux r x =
+      match x with
+        | [] -> v
+        | x::xx ->
+          let tr, r =
+            match r with
+              | Some ({ V.value = V.Record r } as vr) ->
+                let tr =
+                  match (T.deref vr.V.t).T.descr with
+                    | T.Record tr -> tr
+                    | _ -> assert false
+                in
+                tr, r
+              | _ -> [], []
+          in
+          let rx = try List.assoc x r with Not_found -> V.empty_record () in
+          let rx = aux (Some rx) xx in
+          let r = List.filter (fun (x',_) -> x' <> x) r in
+          let r = (x,rx)::r in
+          let r = V.Record r in
+          let tr = List.filter (fun (x',_) -> x' <> x) tr  in
+          let tr = (x,rx.V.t)::tr in
+          let tr = T.make (T.Record tr) in
+          { V.t = tr; value = r }
+    in
+    let cr,r =
+      match r with
+        | Some (cr,r) -> cr,Some r
+        | None -> [], None
+    in
+    (* TODO: we should rename type scheme variables to ensure that there is no
+       conflict!... *)
+    (c@cr), aux r x
+  in
+  Plug.create ~split_name ~doc:"scripting values" "scripting values"
 
 (* {1 Type checking/inference} *)
 
@@ -594,13 +632,13 @@ let rec check ?(print_toplevel=false) ~level ~env e =
   | Record r ->
     List.iter (fun (_,tm) -> check ~level ~env tm) r ;
     let tr = List.map (fun (x,_) -> x, T.fresh_evar ~level ~pos) r in
-    e.t >: mk (T.Record tr) ;
-    List.iter (fun (x,item) -> item.t <: List.assoc x tr) r
+    List.iter (fun (x,item) -> item.t <: List.assoc x tr) r;
+    e.t >: mk (T.Record tr)
   | Field (r,x) ->
     check ~level ~env r ;
     let v = T.fresh_evar ~level ~pos in
-    e.t <: v;
-    r.t <: mk (T.Record [x,v])
+    r.t <: mk (T.Record [x,v]);
+    e.t >: v
   | Replace_field (_,[],v) ->
     check ~level ~env v
   | Replace_field (r,x,v) ->
@@ -622,7 +660,7 @@ let rec check ?(print_toplevel=false) ~level ~env e =
       let rec aux x rt =
         match x with
           | x::xx ->
-            mk (T.Record []) <: rt;
+            rt <: mk (T.Record []);
             let rt =
               match (T.deref rt).T.descr with
                 | T.Record r -> r

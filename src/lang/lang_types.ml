@@ -674,9 +674,9 @@ let rec (<:) a b =
         end
     | Record r1, Record r2 ->
       List.iter
-        (fun (x,t1) ->
+        (fun (x,t2) ->
           try
-            let t2 = List.assoc x r2 in
+            let t1 = List.assoc x r1 in
             try t1 <: t2 with
               | Error (a,b) ->
                 let r1 = List.map (fun (x',_) -> x', if x' = x then a else `Ellipsis) r1 in
@@ -692,7 +692,7 @@ let rec (<:) a b =
                 repr ~filter_out (deref b)
               in
               raise (Error (`Record r1, r2))
-        ) r1
+        ) r2
     | Zero, Zero -> ()
     | Zero, Variable -> ()
     | Succ t1, Succ t2 ->

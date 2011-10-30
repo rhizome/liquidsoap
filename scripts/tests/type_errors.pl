@@ -27,6 +27,13 @@ sub correct {
   print "\n";
 }
 
+# TODO: move this at the end
+section("RECORDS");
+correct('ignore([a=4;b=5].a)');
+incorrect('ignore([a=4;b=5].c)');
+correct('def f(x) = x.a end ignore(f([a=4;b=5]))');
+incorrect('def f(x) = x.c end ignore(f([a=4;b=5]))');
+
 section("BASIC");
 incorrect('[1]==["1"]');
 incorrect('1==["1"]');
