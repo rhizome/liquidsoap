@@ -428,7 +428,7 @@ record:
     /* TODO: check that we don't have the same label defined twice! */
   | LBRA inner_record RBRA { $2 }
 inner_record:
-  | VAR GETS expr SEQ inner_record { ($1,$3)::$5 }
+  | VAR GETS expr COMMA inner_record { ($1,$3)::$5 }
   | VAR GETS expr { [$1,$3] }
 
 
