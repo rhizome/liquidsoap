@@ -20,9 +20,10 @@
 
  *****************************************************************************)
 
-(* The Lang_lexer is not quite enough for our needs,
- * so we first define convenient layers between it and the parser.
- * First a pre-processor which evaluates %ifdefs. *)
+(** The Lang_lexer is not quite enough for our needs, so we first define
+  * convenient layers between it and the parser. *)
+
+(** A pre-processor which evaluates %ifdefs. *)
 let preprocess tokenizer =
   let state = ref 0 in
   let rec token lexbuf =
@@ -158,7 +159,7 @@ let includer dir tokenizer =
   in
     token
 
-(* The expander turns "bla #{e} bli" into ("bla "^string_of(e)^" bli") *)
+(** The expander turns "bla #{e} bli" into ("bla "^string_of(e)^" bli") *)
 type exp_item =
   | String of string | Expr of Lexing.lexbuf | Concat | RPar | LPar | String_of
 let expand tokenizer =
@@ -209,8 +210,8 @@ let expand tokenizer =
   in
     token
 
-(* Glue the documenting comments to the corresponding PP_DEF (read pre-DEF)
- * and strip out other comments. *)
+(** Glue the documenting comments to the corresponding PP_DEF (read pre-DEF)
+  * and strip out other comments. *)
 
 let parse_comments tokenizer =
   let documented_def doc =
@@ -292,10 +293,10 @@ let parse_comments tokenizer =
   in
     token
 
-(* Last but not least: remove new lines and merge some tokens around them
- * in order to remove some ambiguities, typically between:
- *   def foo \n (x,y) ... << Normal definition, starting with a couple
- *   def foo(x,y) ...     << Definition of the function foo *)
+(** Last but not least: remove new lines and merge some tokens around them
+  * in order to remove some ambiguities, typically between:
+  *   def foo \n (x,y) ... << Normal definition, starting with a couple
+  *   def foo(x,y) ...     << Definition of the function foo *)
 let strip_newlines tokenizer =
   let state = ref None in
   let rec token lexbuf =

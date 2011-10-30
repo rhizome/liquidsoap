@@ -436,16 +436,12 @@ app_list:
   | app_list_elem COMMA app_list { $1::$3 }
 
 binding:
-  | VAR GETS expr {
-       let body = $3 in
+  | VAR opt_field GETS expr {
+       let body = $2 $1 $4 in
          (Doc.none (),[]),$1,body
     }
-  | VAR FIELD VAR GETS expr {
-    let body = mk (Replace_field ($1,$3,$5)) in
-    (Doc.none (),[]),$1,body
-  }
-  | DEF VAR g exprs END {
-      let body = $4 in
+  | DEF VAR opt_field g exprs END {
+      let body = $3 $2 $5 in
         $1,$2,body
     }
   | DEF VARLPAR arglist RPAR g exprs END {
@@ -453,6 +449,15 @@ binding:
       let body = mk_fun arglist $6 in
         $1,$2,body
     }
+  | DEF VAR FIELD VARLPAR arglist RPAR g exprs END {
+      let arglist = $5 in
+      let body = mk (Replace_field ($2,$4,mk_fun arglist $8)) in
+        $1,$2,body
+    }
+
+opt_field:
+  | { fun x v -> v }
+  | FIELD VAR { fun r v -> mk (Replace_field (r,$2,v)) }
 
 arglist:
   |                   { [] }
