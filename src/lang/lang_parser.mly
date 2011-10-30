@@ -48,11 +48,9 @@
     let fv = Lang_values.free_vars ~bound body in
       mk ?pos (Fun (fv,args,body))
 
-  let replace_field (r,x,v) =
-    (* Small optimization. *)
-    match x with
-      | [] -> v
-      | _ -> mk (Replace_field (r,x,v))
+  let rec replace_fields e = function
+    | [] -> e
+    | (x,v)::xx -> mk (Replace_field (replace_fields e xx, x, v))
 
   (** Time intervals *)
 
@@ -161,7 +159,7 @@
 %token OGG FLAC VORBIS VORBIS_CBR VORBIS_ABR THEORA DIRAC SPEEX
 %token WAV VOAACENC AACPLUS MP3 MP3_VBR MP3_ABR EXTERNAL
 %token EOF
-%token FIELD
+%token FIELD WITH
 %token BEGIN END GETS TILD
 %token <Doc.item * (string*string) list> DEF
 %token IF THEN ELSE ELSIF
@@ -280,6 +278,7 @@ expr:
   | list                             { mk (List $1) }
   | record                           { mk (Record $1) }
   | expr FIELD VAR                   { mk (Field ($1, $3)) }
+  | LBRA expr WITH inner_record RBRA { replace_fields $2 $4 }
   | REF expr                         { mk (Ref $2) }
   | GET expr                         { mk (Get $2) }
   | expr SET expr                    { mk (Set ($1,$3)) }
@@ -367,6 +366,7 @@ cexpr:
   | list                             { mk (List $1) }
   | record                           { mk (Record $1) }
   | cexpr FIELD VAR                  { mk (Field ($1, $3)) }
+  | LBRA expr WITH inner_record RBRA { replace_fields $2 $4 }
   | REF expr                         { mk (Ref $2) }
   | GET expr                         { mk (Get $2) }
   | cexpr SET expr                   { mk (Set ($1,$3)) }
@@ -444,35 +444,11 @@ app_list:
 
 binding:
 /* This one is not allowed because of shift/reduce conflicts */
-/*
-  | VAR fields GETS expr {
-      let body = replace_field ($1,$2,$4) in
-        (Doc.none (),[]),$1,body
-    }
-*/
   | VAR GETS expr {
       (Doc.none (),[]),$1,$3
     }
-  | DEF VAR fields g exprs END {
-      let body = replace_field ($2,$3,$5) in
-        $1,$2,body
-    }
-  | DEF var_fields_par arglist RPAR g exprs END {
-      let var, fields = $2 in
-      let arglist = $3 in
-      let body = replace_field (var, fields, mk_fun arglist $6) in
-        $1,var,body
-    }
-
-fields:
-  | { [] }
-  | FIELD VAR fields { $2::$3 }
-var_fields_par:
-  | VARLPAR { $1,[] }
-  | VAR fields_par { $1,$2 }
-fields_par:
-  | FIELD VARLPAR { [$2] }
-  | FIELD VAR fields_par { $2::$3 }
+  | DEF VAR g exprs END { $1,$2,$4 }
+  | DEF VARLPAR arglist RPAR g exprs END { $1,$2,mk_fun $3 $6 }
 
 arglist:
   |                   { [] }

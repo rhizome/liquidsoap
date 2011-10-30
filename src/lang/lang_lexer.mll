@@ -130,6 +130,7 @@ rule token = parse
   | "else"   { ELSE }
   | "elsif"  { ELSIF }
   | "->"     { YIELDS }
+  | "with"   { WITH }
 
   | "%ogg"    { OGG }
   | "%vorbis" { VORBIS }

@@ -137,9 +137,8 @@ and in_term =
   | Field   of term * string
   (* [Replace_field (r,x,v)] does the same thing as { r with x = v } in OCaml,
      excepting that [r] is set to the empty record if it was not previously
-     defined. [x] is a list and x=x1::x2::x3 defines r.x1.x2.x3. By convention
-     Replace_field reduces to v when x is []. *)
-  | Replace_field of string * (string list) * term
+     defined. *)
+  | Replace_field of term * string * term
   | Product of term * term
   | Ref     of term
   | Get     of term
@@ -198,7 +197,7 @@ let rec free_vars tm = match tm.term with
       Vars.empty
   | Var x -> Vars.singleton x
   | Ref r | Get r | Field (r,_) -> free_vars r
-  | Replace_field (r,_,v) -> free_vars v
+  | Replace_field (r,_,v) -> Vars.union (free_vars r) (free_vars v)
   | Product (a,b) | Seq (a,b) | Set (a,b) ->
       Vars.union (free_vars a) (free_vars b)
   | List l ->
@@ -254,8 +253,8 @@ let rec check_unused ~lib tm =
     | Seq (a,b) -> check ~toplevel (check v a) b
     | List l -> List.fold_left check v l
     | Record r -> List.fold_left (fun v (_,t) -> check v t) v r
-    | Replace_field (r,x,e) ->
-      let v = Vars.remove r v in
+    | Replace_field (r,_,e) ->
+      let v = check v r in
       check v e
     | App (hd,l) ->
         let v = check v hd in
@@ -340,7 +339,7 @@ let rec map_types f (gen:'a list) tm = match tm.term with
         term = Field (map_types f gen r, x) }
   | Replace_field (r,x,v) ->
       { t = f gen tm.t ;
-        term = Replace_field (r,x,map_types f gen v) }
+        term = Replace_field (map_types f gen r, x, map_types f gen v) }
   | App (hd,l) ->
       { t = f gen tm.t ;
         term = App (map_types f gen hd,
@@ -371,8 +370,8 @@ let rec fold_types f gen x tm = match tm.term with
   (* In the next cases, don't care about tm.t, nothing "new" in it. *)
   | Ref r | Get r | Field (r,_) ->
       fold_types f gen x r
-  | Replace_field (_,_,v) ->
-    (* TODO: is this correct? *)
+  | Replace_field (r,_,v) ->
+    let x = fold_types f gen x r in
     fold_types f gen x v
   | Product (a,b) | Seq (a,b) | Set (a,b) ->
       fold_types f gen (fold_types f gen x a) b
@@ -639,42 +638,19 @@ let rec check ?(print_toplevel=false) ~level ~env e =
     let v = T.fresh_evar ~level ~pos in
     r.t <: mk (T.Record [x,v]);
     e.t >: v
-  | Replace_field (_,[],v) ->
-    check ~level ~env v
   | Replace_field (r,x,v) ->
     check ~level ~env v;
-    (* Try to resolve r and default to empty record. *)
-    let generalized,orig =
-      try
-        List.assoc r env
-      with
-        | Not_found ->
-          begin match builtins#get r with
-            | Some (g,v) -> g,v.V.t
-            | None -> [],record_t []
-          end
-    in
-    let rt = T.instantiate ~level ~generalized orig in
-    (* Replace the type of the field in the last record. *)
+    check ~level ~env r;
+    r.t <: mk (T.Record []);
+    let rt = r.t in
     let rt =
-      let rec aux x rt =
-        match x with
-          | x::xx ->
-            rt <: mk (T.Record []);
-            let rt =
-              match (T.deref rt).T.descr with
-                | T.Record r -> r
-                | _ -> assert false
-            in
-            let rxt = try List.assoc x rt with Not_found -> mk (T.Record []) in
-            let rxt = if xx = [] then v.t else aux xx rxt in
-            let rt = List.filter (fun (x',_) -> x' <> x) rt in
-            let rt = (x,rxt)::rt in
-            mk (T.Record rt)
-          | [] -> assert false
-      in
-      aux x rt
+      match (T.deref rt).T.descr with
+        | T.Record r -> r
+        | _ -> assert false
     in
+    let rt = List.filter (fun (x',_) -> x' <> x) rt in
+    let rt = (x,v.t)::rt in
+    let rt = mk (T.Record rt) in
     e.t >: rt
   | Product (a,b) ->
       check ~level ~env a ; check ~level ~env b ;
@@ -920,32 +896,15 @@ let rec eval ~env tm =
           | _ -> assert false
         end
       | Replace_field (r,x,v) ->
-        let rec aux r = function
-          | x::xx ->
-            let r =
-              match r.V.value with
-                | V.Record r -> r
-                | _ -> assert false
-            in
-            let rx = try List.assoc x r with Not_found -> mk (V.Record []) in
-            let r = List.filter (fun (x',_) -> x' <> x') r in
-            let v =
-              if xx = [] then
-                eval ~env v
-              else
-                aux rx xx
-            in
-            let r = (x,v)::r in
-            mk (V.Record r)
-          | [] -> eval ~env v
-        in
+        let r = eval ~env r in
         let r =
-          try
-            lookup env r tm.t
-          with
-            | Not_found -> mk (V.Record [])
+          match r.V.value with
+            | V.Record r -> r
+            | _ -> assert false
         in
-        aux r x
+        let r = List.filter (fun (x',_) -> x' <> x) r in
+        let r = (x, eval ~env v)::r in
+        mk (V.Record r)
       | Ref v -> mk (V.Ref (ref (eval ~env v)))
       | Get r ->
           begin match (eval ~env r).V.value with
