@@ -304,7 +304,7 @@ let print_repr f t =
       let _,vars =
         List.fold_left
           (fun (first,vars) (lbl,kind) ->
-            if not first then Format.fprintf f ";@," ;
+            if not first then Format.fprintf f ",@," ;
             Format.fprintf f "%s:" lbl ;
             let vars = print ~par:true vars kind in
             false, vars)

@@ -176,7 +176,7 @@ let rec print_term v = match v.term with
   | List l ->
       "["^(String.concat ", " (List.map print_term l))^"]"
   | Record r ->
-    "["^String.concat "; " (List.map (fun (_,t) -> print_term t) r)^"]"
+    "["^String.concat ", " (List.map (fun (_,t) -> print_term t) r)^"]"
   | Product (a,b) ->
       Printf.sprintf "(%s,%s)" (print_term a) (print_term b)
   | Ref a ->
@@ -436,7 +436,7 @@ struct
     | List l ->
         "["^(String.concat ", " (List.map print_value l))^"]"
     | Record r ->
-        "["^(String.concat "; " (List.map (fun (x,v) -> x ^ " = " ^ print_value v) r))^"]"
+        "["^(String.concat ", " (List.map (fun (x,v) -> x ^ " = " ^ print_value v) r))^"]"
     | Ref a ->
         Printf.sprintf "ref(%s)" (print_value !a)
     | Product (a,b) ->
