@@ -181,7 +181,6 @@
 %token <string list> PP_COMMENT
 
 %nonassoc YIELDS       /* fun x -> (x+x) */
-%left FIELD            /* (r.x).y */
 %right SET             /* expr := (expr + expr), expr := (expr := expr) */
 %nonassoc REF          /* ref (1+2) */
 %left BIN0             /* ((x+(y*z))==3) or ((not a)==b) */
@@ -190,7 +189,7 @@
 %left BIN2 MINUS
 %left BIN3 TIMES
 %nonassoc GET          /* (!x)+2 */
-
+%left FIELD            /* (r.x).y */
 
 /* Read %ogg(...) as one block, shifting LPAR rather than reducing %ogg */
 %nonassoc no_app
