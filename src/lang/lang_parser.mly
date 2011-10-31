@@ -52,6 +52,12 @@
     | [] -> e
     | (x,v)::xx -> mk (Replace_field (replace_fields e xx, x, v))
 
+  let rec replace_deep_field e xx v =
+    match xx with
+      | [] -> v
+      | [x] -> mk (Replace_field (e, x, v))
+      | x::xx -> replace_deep_field (mk (Field (e,x))) xx v
+
   (** Time intervals *)
 
   let time_units = [| 7*24*60*60 ; 24*60*60 ; 60*60 ; 60 ; 1 |]
@@ -443,12 +449,29 @@ app_list:
   | app_list_elem COMMA app_list { $1::$3 }
 
 binding:
-/* This one is not allowed because of shift/reduce conflicts */
   | VAR GETS expr {
       (Doc.none (),[]),$1,$3
     }
-  | DEF VAR g exprs END { $1,$2,$4 }
-  | DEF VARLPAR arglist RPAR g exprs END { $1,$2,mk_fun $3 $6 }
+  | DEF VAR fields g exprs END {
+      let body = replace_deep_field (mk (Var $2)) $3 $5 in
+        $1,$2,body
+    }
+  | DEF var_fields_par arglist RPAR g exprs END {
+      let var, fields = $2 in
+      let arglist = $3 in
+      let body = replace_deep_field (mk (Var var)) fields (mk_fun arglist $6) in
+        $1,var,body
+    }
+
+fields:
+  | { [] }
+  | FIELD VAR fields { $2::$3 }
+var_fields_par:
+  | VARLPAR { $1,[] }
+  | VAR fields_par { $1,$2 }
+fields_par:
+  | FIELD VARLPAR { [$2] }
+  | FIELD VAR fields_par { $2::$3 }
 
 arglist:
   |                   { [] }
