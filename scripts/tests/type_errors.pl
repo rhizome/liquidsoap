@@ -5,7 +5,7 @@ use strict ;
 my $liquidsoap = "../../src/liquidsoap";
 die unless -f $liquidsoap ;
 
-$liquidsoap = "$liquidsoap -c";
+$liquidsoap = "LIQ_LADSPA=0 $liquidsoap -c";
 
 sub section {
   print "\n*** $_[0] ***\n\n" ;
@@ -33,6 +33,8 @@ correct('ignore([a=4,b=5].a)');
 incorrect('ignore([a=4,b=5].c)');
 correct('def f(x) = x.a end ignore(f([a=4,b=5]))');
 incorrect('def f(x) = x.c end ignore(f([a=4,b=5]))');
+correct('r = [a=[b=0]] r = [r with a = [r.a with t = 5.]] ignore (r)');
+correct('r = [a=[b=0]] def r.a.t = 5. end ingore (r)');
 
 section("BASIC");
 incorrect('[1]==["1"]');

@@ -55,8 +55,10 @@
   let rec replace_deep_field e xx v =
     match xx with
       | [] -> v
-      | [x] -> mk (Replace_field (e, x, v))
-      | x::xx -> replace_deep_field (mk (Field (e,x))) xx v
+      | x::xx ->
+        let ex = mk (Field (e,x)) in
+        mk (Replace_field(e, x, replace_deep_field ex xx v))
+
 
   (** Time intervals *)
 
