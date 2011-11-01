@@ -71,14 +71,22 @@ let rec may_map f = function
       end
   | [] -> []
 
+(** Memory-optimized version of remove_assoc: returns the originial list if [x]
+    is not present in [l]. *)
+let remove_assoc x l =
+  if List.mem_assoc x l then
+    List.remove_assoc x l
+  else
+    l
+
 let really_read fd buf ofs len =
   let l = ref 0 in
   let r = ref (-1) in
-    while !l < len && !r <> 0 do
-      r := Unix.read fd buf !l (len - !l);
-      l := !l + !r
-    done;
-    !l
+  while !l < len && !r <> 0 do
+    r := Unix.read fd buf !l (len - !l);
+    l := !l + !r
+  done;
+  !l
 
 (* There seems to be an issue under win32 where 
  * some sockets are left in non-blocking mode

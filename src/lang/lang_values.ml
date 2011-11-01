@@ -535,10 +535,10 @@ let builtins : (((int*T.constraints) list) * V.value) Plug.plug =
           in
           let rx = try List.assoc x r with Not_found -> V.empty_record () in
           let rx = aux (Some rx) xx in
-          let r = List.filter (fun (x',_) -> x' <> x) r in
+          let r = Utils.remove_assoc x r in
           let r = (x,rx)::r in
           let r = V.Record r in
-          let tr = List.filter (fun (x',_) -> x' <> x) tr  in
+          let tr = Utils.remove_assoc x tr  in
           let tr = (x,rx.V.t)::tr in
           let tr = record_t ~row:false tr in
           { V.t = tr; value = r }
@@ -650,7 +650,7 @@ let rec check ?(print_toplevel=false) ~level ~env e =
         | T.Record r -> T.merge_record r
         | _ -> assert false
     in
-    let rt = List.filter (fun (x',_) -> x' <> x) rt in
+    let rt = Utils.remove_assoc x rt in
     let rt = (x,v.t)::rt in
     let rt = mk (T.Record (rt, row)) in
     e.t >: rt
@@ -904,7 +904,7 @@ let rec eval ~env tm =
             | V.Record r -> r
             | _ -> assert false
         in
-        let r = List.filter (fun (x',_) -> x' <> x) r in
+        let r = Utils.remove_assoc x r in
         let r = (x, eval ~env v)::r in
         mk (V.Record r)
       | Ref v -> mk (V.Ref (ref (eval ~env v)))
