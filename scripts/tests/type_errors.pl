@@ -34,7 +34,7 @@ incorrect('ignore([a=4,b=5].c)');
 correct('def f(x) = x.a end ignore(f([a=4,b=5]))');
 incorrect('def f(x) = x.c end ignore(f([a=4,b=5]))');
 correct('r = [a=[b=0]] r = [r with a = [r.a with t = 5.]] ignore (r)');
-correct('r = [a=[b=0]] def r.a.t = 5. end ingore (r)');
+correct('r = [a=[b=0]] def r.a.t = 5. end ignore (r)');
 
 section("BASIC");
 incorrect('[1]==["1"]');

@@ -56,9 +56,12 @@
     match xx with
       | [] -> v
       | x::xx ->
-        let ex = mk (Field (e,x)) in
-        mk (Replace_field(e, x, replace_deep_field ex xx v))
-
+        (* The function is used here not to have the same physical e used
+           twice... Can you think of something nicer? *)
+        let ex = mk (Field (mk (Var "e"),x)) in
+        let f = mk (Replace_field(mk (Var "e"), x, replace_deep_field ex xx v)) in
+        let f = mk_fun ["","e",T.fresh_evar ~level:(-1) ~pos:None,None] f in
+        mk (App (f,["",e]))
 
   (** Time intervals *)
 
