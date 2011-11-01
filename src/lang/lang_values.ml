@@ -43,9 +43,7 @@ let ref_t ~pos ~level t =
 let zero_t = T.make T.Zero
 let succ_t t = T.make (T.Succ t)
 let variable_t = T.make T.Variable
-let record_t ~row l =
-  let row = if row then Some (ref None) else None in
-  T.make (T.Record (T.R (l, row)))
+let record_t ~row l = T.record ~row l
 
 let rec type_of_int n = if n=0 then zero_t else succ_t (type_of_int (n-1))
 
@@ -527,7 +525,9 @@ let builtins : (((int*T.constraints) list) * V.value) Plug.plug =
               | Some ({ V.value = V.Record r } as vr) ->
                 let tr =
                   match (T.deref vr.V.t).T.descr with
-                    | T.Record tr -> fst (T.unR (T.merge_record tr))
+                    | T.Record tr ->
+                      (* TODO: is it ok to drop row variables here? *)
+                      fst (T.merge_record tr)
                     | _ -> assert false
                 in
                 tr, r
@@ -647,13 +647,12 @@ let rec check ?(print_toplevel=false) ~level ~env e =
     let rt = r.t in
     let rt, row =
       match (T.deref rt).T.descr with
-        | T.Record r -> T.unR (T.merge_record r)
+        | T.Record r -> T.merge_record r
         | _ -> assert false
     in
     let rt = List.filter (fun (x',_) -> x' <> x) rt in
     let rt = (x,v.t)::rt in
-    let rt = T.R (rt, row) in
-    let rt = mk (T.Record rt) in
+    let rt = mk (T.Record (rt, row)) in
     e.t >: rt
   | Product (a,b) ->
       check ~level ~env a ; check ~level ~env b ;

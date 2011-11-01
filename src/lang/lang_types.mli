@@ -45,10 +45,9 @@ and descr =
   | EVar of int * constraints
   | Link of t
   | Record of record
-and record = R of ((string * t) list * record option ref option)
+and record = (string * t) list * t option
 
 val merge_record : record -> record
-val unR : record -> ((string * t) list * record option ref option)
 
 val make : ?pos:pos option -> ?level:int -> descr -> t
 val dummy : t
@@ -78,3 +77,4 @@ val ( >: ) : t -> t -> unit
 
 val fresh : constraints:constraints -> level:int -> pos:pos option -> t
 val fresh_evar : level:int -> pos:pos option -> t
+val record : ?level:int -> row:bool -> (string * t) list -> t

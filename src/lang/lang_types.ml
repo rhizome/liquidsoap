@@ -127,9 +127,9 @@ and descr =
   | Arrow     of (bool*string*t) list * t
   | EVar      of int*constraints (* type variable *)
   | Link      of t
+  (* The second member is an optional row variable, which is either an evar or a Record. *)
   | Record    of record
-(* Type of fields and optional row polymorphism (it is unbound when it points to None). *)
-and record = R of ((string * t) list * record option ref option)
+and record = (string * t) list * t option
 
 type repr = [
   | `Constr  of string * (variance*repr) list
@@ -150,17 +150,25 @@ let make ?(pos=None) ?(level=(-1)) d =
 
 let dummy = make ~pos:None (EVar (-1,[]))
 
-let unR = function R r -> r
+let is_evar t =
+  match t.descr with
+    | EVar _ -> true
+    | _ -> false
 
 (** Merge a record with other records its row variables are pointing to. *)
 let rec merge_record r =
   match r with
-  | R (_, None) -> r
-  | R (_, Some { contents = None }) -> r
-  | R (r1, Some { contents = Some r2 }) ->
-    let r2 = merge_record r2 in
-    let r2, row = unR r2 in
-    R (r1@r2, row)
+  | _, None -> r
+  | _, Some { descr = EVar _ } -> r
+  | r1, Some { descr = Link t } ->
+    let r2 =
+      match t.descr with
+        | Record r -> r
+        | _ -> assert false
+    in
+    let r2, row = merge_record r2 in
+    r1@r2, row
+  | _ -> assert false
 
 (** Dereferencing gives you the meaning of a term,
   * going through links created by instantiations.
@@ -252,7 +260,7 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
         | Link t -> repr t
         | Record r ->
           (* TODO: shall we display the row variables? *)
-          let r, _ = unR (merge_record r) in
+          let r, _ = merge_record r in
           `Record (List.map (fun (x,t) -> x, repr t) r)
   in
     repr t
@@ -441,6 +449,10 @@ let fresh_evar =
   in
     f
 
+let record ?(level=(-1)) ~row l =
+  let row = if row then Some (fresh_evar ~level ~constraints:[] ~pos:None) else None in
+  make ~level (Record (l, row))
+
 (** {1 Assignation} *)
 
 (** These two exceptions can be raised when attempting to assign a variable. *)
@@ -476,7 +488,8 @@ let rec occur_check a b =
       | Ground _ -> ()
       | Link _ -> assert false
       | Record r ->
-        let r, _ = unR (merge_record r) in
+        (* We should not have to check occurences in row variables. *)
+        let r, _ = merge_record r in
         List.iter (fun (_,t) -> occur_check a t) r
 
 (* Perform [a := b] where [a] is an EVar, check that [type(a)<:type(b)]. *)
@@ -693,10 +706,8 @@ let rec (<:) a b =
                                          `Product (`Ellipsis,b)))
         end
     | Record r1, Record r2 ->
-      let r1 = merge_record r1 in
-      let r2 = merge_record r2 in
-      let rec1, row1 = unR r1 in
-      let rec2, row2 = unR r2 in
+      let rec1, row1 = merge_record r1 in
+      let rec2, row2 = merge_record r2 in
       List.iter
         (fun (x,t2) ->
           try
@@ -721,26 +732,31 @@ let rec (<:) a b =
                   raise (Error (`Record rec1, rec2))
                 | Some row1 ->
                   (* We have a row type, add a field to it. *)
-                  if !row1 = None then
+                  if is_evar row1 then
                     (
-                      let fresh = R ([], Some (ref None)) in
-                      row1 := Some fresh
+                      let fresh = record ~level:row1.level ~row:true [] in
+                      row1.descr <- Link fresh
                     );
-                  let r, row = unR (Utils.get_some !row1) in
-                  row1 := Some (R ((x,t2)::r, row))
+                  let t, (r, row) =
+                    match row1.descr with
+                      | Link ({ descr = Record r } as t) -> t, r
+                      | _ -> assert false
+                  in
+                  let r = (x,t2)::r in
+                  let t = { t with descr = Record (r, row) } in
+                  row1.descr <- Link t
         ) rec2;
         (* Then we unify the row variables. *)
-        let r1 = merge_record r1 in
-        let r1, row1 = unR r1 in
+        let r1, row1 = merge_record r1 in
         (
           match row1, row2 with
             | None, _ -> ()
-            | Some row1, None -> row1 := Some (R ([], None))
+            | Some row1, None -> row1.descr <- Link (record ~level:row1.level ~row:true [])
             | Some row1, Some row2 ->
               (* Occurs-check *)
-              if row1 != row2 then
+              if row1 <> row2 then
                 (* Unify *)
-                row1 := Some (R ([], Some row2))
+                row1.descr <- Link (make ~level:row1.level (Record ([], Some row2)))
         )
     | Zero, Zero -> ()
     | Zero, Variable -> ()
@@ -901,7 +917,8 @@ let filter_vars f t =
         if f t then (i,constraints)::l else l
     | Link _ -> assert false
     | Record r ->
-      let r,_ = unR (merge_record r) in
+      (* TODO: also filter row vars? *)
+      let r,_ = merge_record r in
       List.fold_left (fun l (x,t) -> aux l t) l r
   in
     aux [] t
@@ -942,9 +959,9 @@ let copy_with subst t =
              * the type unchanged. *)
             cp (Link (aux t))
         | Record r ->
-          let r, row = unR (merge_record r) in
+          let r, row = merge_record r in
           let r = List.map (fun (x,t) -> x, aux t) r in
-          cp (Record (R (r, row)))
+          cp (Record (r, row))
   in
     aux t
 
