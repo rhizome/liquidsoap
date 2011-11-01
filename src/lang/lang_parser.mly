@@ -58,9 +58,10 @@
       | x::xx ->
         (* The function is used here not to have the same physical e used
            twice... Can you think of something nicer? *)
-        let ex = mk (Field (mk (Var "e"),x)) in
-        let f = mk (Replace_field(mk (Var "e"), x, replace_deep_field ex xx v)) in
-        let f = mk_fun ["","e",T.fresh_evar ~level:(-1) ~pos:None,None] f in
+        let en = "#" in
+        let ex = mk (Field (mk (Var en),x)) in
+        let f = mk (Replace_field(mk (Var en), x, replace_deep_field ex xx v)) in
+        let f = mk_fun ["",en,T.fresh_evar ~level:(-1) ~pos:None,None] f in
         mk (App (f,["",e]))
 
   (** Time intervals *)
