@@ -446,44 +446,34 @@ class output ~kind p =
                                                                     ~name:
                                                                     mount
                                                                     source
-                                                                  
                                                                 (** File descriptor where to dump. *)
                                                                 val mutable
                                                                   dump = None
-                                                                  
                                                                 val mutable
                                                                   encoder =
                                                                   None
-                                                                  
                                                                 val mutable
                                                                   clients =
                                                                   Queue.
                                                                     create ()
-                                                                  
                                                                 val clients_m =
                                                                   Mutex.
                                                                     create ()
-                                                                  
                                                                 val duppy_c =
                                                                   Duppy_c.
                                                                     create ()
-                                                                  
                                                                 val duppy_m =
                                                                   Duppy_m.
                                                                     create ()
-                                                                  
                                                                 val mutable
                                                                   chunk_len =
                                                                   0
-                                                                  
                                                                 val mutable
                                                                   burst_data =
                                                                   []
-                                                                  
                                                                 val mutable
                                                                   burst_pos =
                                                                   0
-                                                                  
                                                                 val metadata =
                                                                   {
                                                                     metadata =
@@ -492,7 +482,6 @@ class output ~kind p =
                                                                     Mutex.
                                                                     create ();
                                                                   }
-                                                                  
                                                                 method encode =
                                                                   fun frame
                                                                     ofs len
@@ -504,7 +493,6 @@ class output ~kind p =
                                                                     encode
                                                                     frame ofs
                                                                     len
-                                                                  
                                                                 method insert_metadata =
                                                                   fun m ->
                                                                     let m 
@@ -557,7 +545,6 @@ class output ~kind p =
                                                                     Meta.
                                                                     export_metadata
                                                                     meta))
-                                                                  
                                                                 method add_client =
                                                                   fun
                                                                     ~protocol
@@ -753,7 +740,9 @@ class output ~kind p =
                                                                     on_disconnect
                                                                     ip;
                                                                     Harbor.
-                                                                    Close ""));
+                                                                    Close
+                                                                    (Harbor.
+                                                                    Full "")));
                                                                     }
                                                                     in
                                                                     Duppy.
@@ -785,13 +774,9 @@ class output ~kind p =
                                                                     (function
                                                                     | 
                                                                     Harbor.
-                                                                    Reply _
-                                                                    ->
-                                                                    assert
-                                                                    false
-                                                                    | 
-                                                                    Harbor.
-                                                                    Close s
+                                                                    Close
+                                                                    (Harbor.
+                                                                    Full s)
                                                                     ->
                                                                     (self#log#
                                                                     f 4
@@ -801,7 +786,15 @@ class output ~kind p =
                                                                     state <-
                                                                     Done;
                                                                     Harbor.
-                                                                    reply s)))
+                                                                    reply s)
+                                                                    | 
+                                                                    Harbor.
+                                                                    Reply _ |
+                                                                    Harbor.
+                                                                    Close _
+                                                                    ->
+                                                                    assert
+                                                                    false))
                                                                     (fun ()
                                                                     ->
                                                                     Duppy.
@@ -859,7 +852,6 @@ class output ~kind p =
                                                                     Harbor.
                                                                     relayed
                                                                     reply)))
-                                                                  
                                                                 method send =
                                                                   fun b ->
                                                                     let slen 
@@ -1061,7 +1053,6 @@ class output ~kind p =
                                                                     new_clients))
                                                                     ()))))
                                                                     else ()
-                                                                  
                                                                 method output_start =
                                                                   (assert
                                                                     (encoder
@@ -1155,7 +1146,6 @@ class output ~kind p =
                                                                     | 
                                                                     None ->
                                                                     ())))
-                                                                  
                                                                 method output_stop =
                                                                   (ignore
                                                                     ((Utils.
@@ -1215,13 +1205,11 @@ class output ~kind p =
                                                                     | 
                                                                     None ->
                                                                     ()))
-                                                                  
                                                                 method output_reset =
                                                                   (self#
                                                                     output_stop;
                                                                    self#
                                                                     output_start)
-                                                                  
                                                               end
   
 let () =

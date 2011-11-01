@@ -529,7 +529,7 @@ object (self)
                     client.state <- Done ;
                     Buffer.reset buffer) () ;
                 on_disconnect ip ;
-                Harbor.Close "")
+                Harbor.Close (Harbor.Full ""))
         }
     in
     duppy_do
@@ -542,11 +542,12 @@ object (self)
         else
           duppy_return () 
       with
-        | Harbor.Reply _ -> assert false
-        | Harbor.Close s ->
+        | Harbor.Close (Harbor.Full s) ->
              self#log#f 4 "Client %s failed to authenticate!" ip ;
              client.state <- Done ;
              Harbor.reply s
+        | Harbor.Reply _ 
+        | Harbor.Close _ -> assert false
      end ;
      begin
        self#log#f 4 "Client %s connected" ip ;

@@ -1,3 +1,4 @@
+%include "list.liq"
 %include "utils.liq"
 %include "externals.liq"
 %include "shoutcast.liq"

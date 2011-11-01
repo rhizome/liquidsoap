@@ -64,29 +64,24 @@ let log = Log.make [ "harbor" ]
 class virtual source ~kind =
   object (self)
     inherit Source.source kind
-      
     method virtual relay :
       string -> (string * string) list -> Unix.file_descr -> unit
-      
     method virtual insert_metadata : (string, string) Hashtbl.t -> unit
-      
     method virtual login : (string * (string -> string -> bool))
-      
     method virtual icy_charset : string option
-      
     method virtual meta_charset : string option
-      
     method virtual get_mime_type : string option
-      
   end
   
 type sources = (string, source) Hashtbl.t
 
-type reply = | Close of string | Reply of string
+type data = | Full of string | Callback of (unit -> string)
 
-let reply s = Duppy.Monad.raise (Close s)
+type reply = | Close of data | Reply of data
+
+let reply s = Duppy.Monad.raise (Close (Full s))
   
-let relayed s = Duppy.Monad.raise (Reply s)
+let relayed s = Duppy.Monad.raise (Reply (Full s))
   
 type http_handler =
   http_method: string ->
@@ -635,9 +630,10 @@ let open_port ~icy port =
                  if e = Duppy.Io.Timeout
                  then
                    Close
-                     (http_error_page 408 "Request Time-out"
-                        "The server timed out waiting for the request.")
-                 else Close "") in
+                     (Full
+                        (http_error_page 408 "Request Time-out"
+                           "The server timed out waiting for the request."))
+                 else Close (Full "")) in
               let h =
                 {
                   Duppy.Monad.Io.scheduler = Tutils.scheduler;
@@ -647,7 +643,7 @@ let open_port ~icy port =
                 } in
               let reply r =
                 let close () = try Unix.close socket with | _ -> () in
-                let (s, exec) =
+                let (s, finish) =
                   match r with
                   | Reply s -> (s, (fun () -> ()))
                   | Close s -> (s, close) in
@@ -657,11 +653,24 @@ let open_port ~icy port =
                   * the reply is Close. In case of Reply, 
                   * we cannot close now has there might
                   * be another task actually using the socket. *)
-                   exec ())
+                   finish ())
                 in
-                  Duppy.Io.write ~timeout: conf_timeout#get
-                    ~priority: Tutils.Non_blocking ~on_error ~string: s ~exec
-                    Tutils.scheduler socket
+                  match s with
+                  | Full s ->
+                      Duppy.Io.write ~timeout: conf_timeout#get
+                        ~priority: Tutils.Non_blocking ~on_error ~string: s
+                        ~exec: finish Tutils.scheduler socket
+                  | Callback f ->
+                      let rec exec () =
+                        let string = f ()
+                        in
+                          if string <> ""
+                          then
+                            Duppy.Io.write ~timeout: conf_timeout#get
+                              ~priority: Tutils.Non_blocking ~on_error
+                              ~string ~exec Tutils.scheduler socket
+                          else finish ()
+                      in exec ()
               in
                 Duppy.Monad.run ~return: reply ~raise: reply
                   (handle_client ~port ~icy h))

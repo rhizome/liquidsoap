@@ -1407,13 +1407,16 @@ let () =
          Lang.unit)
 
 let () =
+  let callback_t = Lang.fun_t [] Lang.string_t in
   add_builtin "harbor.http.register" ~cat:Liq
     ~descr:"Register a HTTP handler on the harbor. \
            The given function receives as argument \
            the full requested uri (e.g. \"foo?var=bar\"), \
            method type, http protocol version, possible input data \
            and the list of HTTP headers \
-           and returns the answer sent to the client, including HTTP headers. \
+           and returns a response callback for the client. This function is \
+           called until it returns an empty string. Data returned by the \
+           callback should be the HTTP response, including HTTP headers. \
            Registered uri can be regular expressions \
            (e.g. \".+\\.php\") and can override default \
            metadata handlers."
@@ -1426,7 +1429,7 @@ let () =
                                  (Lang.product_t Lang.string_t
                                                  Lang.string_t));
                      (false,"",Lang.string_t)]
-      Lang.string_t,
+                     callback_t,
       None,Some "Function to execute. method argument \
                  is \"PUT\" or \"GET\", protocol argument is \
                  \"HTTP/1.1\" or \"HTTP/1.0\" etc., data argument \
@@ -1448,13 +1451,17 @@ let () =
          let l = Lang.list ~t:(Lang.product_t Lang.string_t Lang.string_t)
                            l
          in
-         Harbor.reply
-           (Lang.to_string
-             (Lang.apply ~t:Lang.string_t 
-                         f [("",Lang.string uri);("headers",l);
-                            ("data",Lang.string data);
-                            ("protocol",Lang.string protocol);
-                            ("method",Lang.string http_method)]))
+         let callback = 
+           Lang.apply ~t:callback_t
+             f [("",Lang.string uri);("headers",l);
+                ("data",Lang.string data);
+                ("protocol",Lang.string protocol);
+                ("method",Lang.string http_method)]
+         in
+         let callback () = 
+           Lang.to_string (Lang.apply ~t:Lang.string_t callback [])
+         in
+         Duppy.Monad.raise (Harbor.Reply (Harbor.Callback callback))
        in
        Harbor.add_http_handler ~port ~uri f;
        Lang.unit)
