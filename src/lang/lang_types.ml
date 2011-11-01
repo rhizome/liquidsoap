@@ -127,7 +127,9 @@ and descr =
   | Arrow     of (bool*string*t) list * t
   | EVar      of int*constraints (* type variable *)
   | Link      of t
-  | Record    of (string * t) list
+  | Record    of record
+(* Type of fields and optional row polymorphism (it is unbound when it points to None). *)
+and record = R of ((string * t) list * record option ref option)
 
 type repr = [
   | `Constr  of string * (variance*repr) list
@@ -148,11 +150,24 @@ let make ?(pos=None) ?(level=(-1)) d =
 
 let dummy = make ~pos:None (EVar (-1,[]))
 
+let unR = function R r -> r
+
+(** Merge a record with other records its row variables are pointing to. *)
+let rec merge_record r =
+  match r with
+  | R (_, None) -> r
+  | R (_, Some { contents = None }) -> r
+  | R (r1, Some { contents = Some r2 }) ->
+    let r2 = merge_record r2 in
+    let r2, row = unR r2 in
+    R (r1@r2, row)
+
 (** Dereferencing gives you the meaning of a term,
   * going through links created by instantiations.
   * One should (almost) never work on a non-dereferenced type. *)
 let rec deref t = match t.descr with
   | Link x -> deref x
+  | Record r -> { t with descr = Record (merge_record r) }
   | _ -> t
 
 (** Given a strictly positive integer, generate a name in [a-z]+:
@@ -235,7 +250,10 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
             else
               evar id c
         | Link t -> repr t
-        | Record r -> `Record (List.map (fun (x,t) -> x, repr t) r)
+        | Record r ->
+          (* TODO: shall we display the row variables? *)
+          let r, _ = unR (merge_record r) in
+          `Record (List.map (fun (x,t) -> x, repr t) r)
   in
     repr t
 
@@ -457,7 +475,9 @@ let rec occur_check a b =
             b.level <- min b.level a.level
       | Ground _ -> ()
       | Link _ -> assert false
-      | Record r -> List.iter (fun (_,t) -> occur_check a t) r
+      | Record r ->
+        let r, _ = unR (merge_record r) in
+        List.iter (fun (_,t) -> occur_check a t) r
 
 (* Perform [a := b] where [a] is an EVar, check that [type(a)<:type(b)]. *)
 let rec bind a0 b =
@@ -673,26 +693,55 @@ let rec (<:) a b =
                                          `Product (`Ellipsis,b)))
         end
     | Record r1, Record r2 ->
+      let r1 = merge_record r1 in
+      let r2 = merge_record r2 in
+      let rec1, row1 = unR r1 in
+      let rec2, row2 = unR r2 in
       List.iter
         (fun (x,t2) ->
           try
-            let t1 = List.assoc x r1 in
+            let t1 = List.assoc x rec1 in
             try t1 <: t2 with
               | Error (a,b) ->
-                let r1 = List.map (fun (x',_) -> x', if x' = x then a else `Ellipsis) r1 in
-                let r2 = List.map (fun (x',_) -> x', if x' = x then b else `Ellipsis) r2 in
-                raise (Error (`Record r1, `Record r2))
+                let rec1 = List.map (fun (x',_) -> x', if x' = x then a else `Ellipsis) rec1 in
+                let rec2 = List.map (fun (x',_) -> x', if x' = x then b else `Ellipsis) rec2 in
+                raise (Error (`Record rec1, `Record rec2))
           with
             | Not_found ->
-              let r1 = List.map (fun (x',t1) -> x', if x' = x then repr t1 else `Ellipsis) r1 in
-              let r2 =
-                (* Handles both records and non-records *)
-                let fo = ref false in
-                let filter_out _ = !fo || (fo := true; false) in
-                repr ~filter_out (deref b)
-              in
-              raise (Error (`Record r1, r2))
-        ) r2
+              match row1 with
+                | None ->
+                  (* No row type, sorry. *)
+                  let rec1 = List.map (fun (x',t1) -> x', if x' = x then repr t1 else `Ellipsis) rec1 in
+                  let rec2 =
+                    (* Handles both records and non-records *)
+                    let fo = ref false in
+                    let filter_out _ = !fo || (fo := true; false) in
+                    repr ~filter_out (deref b)
+                  in
+                  raise (Error (`Record rec1, rec2))
+                | Some row1 ->
+                  (* We have a row type, add a field to it. *)
+                  if !row1 = None then
+                    (
+                      let fresh = R ([], Some (ref None)) in
+                      row1 := Some fresh
+                    );
+                  let r, row = unR (Utils.get_some !row1) in
+                  row1 := Some (R ((x,t2)::r, row))
+        ) rec2;
+        (* Then we unify the row variables. *)
+        let r1 = merge_record r1 in
+        let r1, row1 = unR r1 in
+        (
+          match row1, row2 with
+            | None, _ -> ()
+            | Some row1, None -> row1 := Some (R ([], None))
+            | Some row1, Some row2 ->
+              (* Occurs-check *)
+              if row1 != row2 then
+                (* Unify *)
+                row1 := Some (R ([], Some row2))
+        )
     | Zero, Zero -> ()
     | Zero, Variable -> ()
     | Succ t1, Succ t2 ->
@@ -851,7 +900,9 @@ let filter_vars f t =
     | EVar (i,constraints) ->
         if f t then (i,constraints)::l else l
     | Link _ -> assert false
-    | Record r -> List.fold_left (fun l (x,t) -> aux l t) l r
+    | Record r ->
+      let r,_ = unR (merge_record r) in
+      List.fold_left (fun l (x,t) -> aux l t) l r
   in
     aux [] t
 
@@ -891,7 +942,9 @@ let copy_with subst t =
              * the type unchanged. *)
             cp (Link (aux t))
         | Record r ->
-          cp (Record (List.map (fun (x,t) -> x, aux t) r))
+          let r, row = unR (merge_record r) in
+          let r = List.map (fun (x,t) -> x, aux t) r in
+          cp (Record (R (r, row)))
   in
     aux t
 

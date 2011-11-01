@@ -48,8 +48,6 @@ let of_list_t t = match (T.deref t).T.descr with
   | T.List t -> t
   | _ -> assert false
 
-let record_t t = T.make (T.Record t)
-
 let metadata_t = list_t (product_t string_t string_t)
 
 let zero_t = Term.zero_t
@@ -225,7 +223,6 @@ let string i = mk string_t (String i)
 let product a b = mk (product_t a.t b.t) (Product (a,b))
 
 let list ~t l = mk (list_t t) (List l)
-let record ~t r = mk (record_t t) (Record r)
 
 let source s =
   mk (source_t (kind_type_of_frame_kind s#kind)) (Source s)

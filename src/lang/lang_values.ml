@@ -43,7 +43,9 @@ let ref_t ~pos ~level t =
 let zero_t = T.make T.Zero
 let succ_t t = T.make (T.Succ t)
 let variable_t = T.make T.Variable
-let record_t l = T.make (T.Record l)
+let record_t ~row l =
+  let row = if row then Some (ref None) else None in
+  T.make (T.Record (T.R (l, row)))
 
 let rec type_of_int n = if n=0 then zero_t else succ_t (type_of_int (n-1))
 
@@ -508,7 +510,7 @@ struct
         v
 
   let empty_record () =
-    { t = T.make (T.Record []); value = Record [] }
+    { t = record_t ~row:false []; value = Record [] }
 end
 
 (** {1 Built-in values and toplevel definitions} *)
@@ -525,7 +527,7 @@ let builtins : (((int*T.constraints) list) * V.value) Plug.plug =
               | Some ({ V.value = V.Record r } as vr) ->
                 let tr =
                   match (T.deref vr.V.t).T.descr with
-                    | T.Record tr -> tr
+                    | T.Record tr -> fst (T.unR (T.merge_record tr))
                     | _ -> assert false
                 in
                 tr, r
@@ -538,7 +540,7 @@ let builtins : (((int*T.constraints) list) * V.value) Plug.plug =
           let r = V.Record r in
           let tr = List.filter (fun (x',_) -> x' <> x) tr  in
           let tr = (x,rx.V.t)::tr in
-          let tr = T.make (T.Record tr) in
+          let tr = record_t ~row:false tr in
           { V.t = tr; value = r }
     in
     let cr,r =
@@ -632,24 +634,25 @@ let rec check ?(print_toplevel=false) ~level ~env e =
     List.iter (fun (_,tm) -> check ~level ~env tm) r ;
     let tr = List.map (fun (x,_) -> x, T.fresh_evar ~level ~pos) r in
     List.iter (fun (x,item) -> item.t <: List.assoc x tr) r;
-    e.t >: mk (T.Record tr)
+    e.t >: record_t ~row:false tr
   | Field (r,x) ->
     check ~level ~env r ;
     let v = T.fresh_evar ~level ~pos in
-    r.t <: mk (T.Record [x,v]);
+    r.t <: record_t ~row:true [x,v];
     e.t >: v
   | Replace_field (r,x,v) ->
     check ~level ~env v;
     check ~level ~env r;
-    r.t <: mk (T.Record []);
+    r.t <: record_t ~row:true [];
     let rt = r.t in
-    let rt =
+    let rt, row =
       match (T.deref rt).T.descr with
-        | T.Record r -> r
+        | T.Record r -> T.unR (T.merge_record r)
         | _ -> assert false
     in
     let rt = List.filter (fun (x',_) -> x' <> x) rt in
     let rt = (x,v.t)::rt in
+    let rt = T.R (rt, row) in
     let rt = mk (T.Record rt) in
     e.t >: rt
   | Product (a,b) ->

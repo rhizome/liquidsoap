@@ -44,7 +44,12 @@ and descr =
   | Arrow of (bool * string * t) list * t
   | EVar of int * constraints
   | Link of t
-  | Record of (string * t) list
+  | Record of record
+and record = R of ((string * t) list * record option ref option)
+
+val merge_record : record -> record
+val unR : record -> ((string * t) list * record option ref option)
+
 val make : ?pos:pos option -> ?level:int -> descr -> t
 val dummy : t
 
