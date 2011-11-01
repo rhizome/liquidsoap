@@ -1,11 +1,3 @@
-# Alias for the <code>l[k]</code> notation.
-# @category List
-# @param a Key to look for
-# @param l List of pairs (key,value)
-def list.assoc(a,l)
-  l[a]
-end
-
 # list.mem_assoc(key,l) returns true if l contains a pair
 # (key,value)
 # @category List

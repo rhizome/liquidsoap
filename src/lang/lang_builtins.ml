@@ -888,8 +888,8 @@ let () =
 let () =
   (* TODO It would be good to generalize this one but we'd need a way to handle
    *      errors. *)
-  add_builtin "_[_]" ~cat:List
-    ~descr:"l[k] returns the first v such that \
+  add_builtin "list.assoc" ~cat:List
+    ~descr:"list.assoc(k,l) returns the first v such that \
             (k,v) is in the list l."
     ["",Lang.string_t,None,None ;
      "",Lang.metadata_t,None,None]
