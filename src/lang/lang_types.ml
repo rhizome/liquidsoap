@@ -140,7 +140,7 @@ type repr = [
   | `Arrow     of (bool*string*repr) list * repr
   | `EVar      of string*constraints (* existential variable *)
   | `UVar      of string*constraints (* universal variable *)
-  | `Record of (string*repr) list
+  | `Record of (string*repr) list * repr option
   | `Ellipsis       (* omitted sub-term *)
   | `Range_Ellipsis (* omitted sub-terms (in a list, e.g. list of args) *)
 ]
@@ -260,8 +260,13 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
         | Link t -> repr t
         | Record r ->
           (* TODO: shall we display the row variables? *)
-          let r, _ = merge_record r in
-          `Record (List.map (fun (x,t) -> x, repr t) r)
+          let r, row = merge_record r in
+          let row =
+            match row with
+              | Some row -> Some (repr row)
+              | None -> None
+          in
+          `Record (List.map (fun (x,t) -> x, repr t) r, row)
   in
     repr t
 
@@ -325,7 +330,7 @@ let print_repr f t =
         let vars = print ~par:false vars t in
         Format.fprintf f "]@]" ;
         vars
-    | `Record r ->
+    | `Record (r, row) ->
       Format.fprintf f "@[<1>[";
       let _,vars =
         List.fold_left
@@ -336,6 +341,13 @@ let print_repr f t =
             false, vars)
           (true,vars)
           r
+      in
+      let vars =
+        match row with
+          | Some row ->
+            Format.fprintf f ", @,";
+            print ~par vars row
+          | None -> vars
       in
       Format.fprintf f "]@]";
       vars
@@ -716,7 +728,7 @@ let rec (<:) a b =
               | Error (a,b) ->
                 let rec1 = List.map (fun (x',_) -> x', if x' = x then a else `Ellipsis) rec1 in
                 let rec2 = List.map (fun (x',_) -> x', if x' = x then b else `Ellipsis) rec2 in
-                raise (Error (`Record rec1, `Record rec2))
+                raise (Error (`Record (rec1, Utils.may repr row1), `Record (rec2, Utils.may repr row2)))
           with
             | Not_found ->
               match row1 with
@@ -729,7 +741,7 @@ let rec (<:) a b =
                     let filter_out _ = !fo || (fo := true; false) in
                     repr ~filter_out (deref b)
                   in
-                  raise (Error (`Record rec1, rec2))
+                  raise (Error (`Record (rec1, Utils.may repr row1), rec2))
                 | Some row1 ->
                   (* We have a row type, add a field to it. *)
                   if is_evar row1 then

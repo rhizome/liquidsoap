@@ -22,6 +22,8 @@
 
 let get_some = function Some x -> x | None -> assert false
 
+let may f = function None -> None | Some x -> Some (f x)
+
 (* Force locale to C *)
 external force_locale : unit -> unit = "liquidsoap_set_locale"
 
