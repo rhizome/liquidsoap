@@ -309,8 +309,7 @@ expr:
   | VAR                              { mk (Var $1) }
   | VARLPAR app_list RPAR            { mk (App (mk ~pos:(1,1) (Var $1),$2)) }
   | expr FIELD VARLPAR app_list RPAR { mk (App (mk (Field ($1, $3)), $4)) }
-  | VARLBRA expr RBRA                { mk (App (mk ~pos:(1,1) 
-                                           (Field (mk (Var "list"), "assoc")),
+  | VARLBRA expr RBRA                { mk (App (mk ~pos:(1,1) (Var "_[_]"),
                                            ["",$2;
                                             "",mk ~pos:(1,1) (Var $1)])) }
   | BEGIN exprs END                  { $2 }
@@ -398,8 +397,7 @@ cexpr:
   | VAR                              { mk (Var $1) }
   | VARLPAR app_list RPAR            { mk (App (mk ~pos:(1,1) (Var $1),$2)) }
   | cexpr FIELD VARLPAR app_list RPAR { mk (App (mk (Field ($1, $3)), $4)) }
-  | VARLBRA expr RBRA                { mk (App (mk ~pos:(1,1)
-                                           (Field (mk (Var "list"), "assoc")),
+  | VARLBRA expr RBRA                { mk (App (mk ~pos:(1,1) (Var "_[_]"),
                                            ["",$2;
                                             "",mk ~pos:(1,1) (Var $1)])) }
   | BEGIN exprs END                  { $2 }
