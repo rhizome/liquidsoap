@@ -21,36 +21,107 @@
  *****************************************************************************)
 
 (** The Lang_lexer is not quite enough for our needs, so we first define
-  * convenient layers between it and the parser. *)
+    * convenient layers between it and the parser. *)
 
 (** A pre-processor which evaluates %ifdefs. *)
 let preprocess tokenizer =
   let state = ref 0 in
+  let var = ref None in
+  let last_dot = ref true in
   let rec token lexbuf =
+    let var_done () =
+      last_dot := false;
+      let var =
+        let v =
+          match !var with
+            | Some var -> var
+            | None -> assert false
+        in
+        var := None;
+        List.rev v
+      in
+      let v,xx = List.hd var, List.tl var in
+      let rec skip () =
+        match tokenizer lexbuf with
+          | Lang_parser.PP_ENDIF -> ()
+          | _ -> skip ()
+      in
+      (** XXX Less natural meaning than the original one. *)
+      let v = Lang_values.builtins#get v in
+      match v with
+        | Some r ->
+          (
+            match xx with
+              | [] -> incr state
+              | [x] ->
+                (
+                  match (snd r).Lang_values.V.value with
+                    | Lang_values.V.Record r ->
+                      if List.mem_assoc x r then
+                        incr state
+                      else
+                        skip ()
+                    | _ -> skip ()
+                )
+              | _ -> failwith "TODO: too many fields in %ifdef"
+          )
+        | None -> skip ()
+    in
     match tokenizer lexbuf with
       | Lang_parser.PP_IFDEF ->
-          begin match tokenizer lexbuf with
-            | Lang_parser.VAR v ->
-                (** XXX Less natural meaning than the original one. *)
-                if Lang_values.builtins#is_registered v then begin
-                  incr state ;
-                  token lexbuf
-                end else
-                  let rec skip () =
-                    match tokenizer lexbuf with
-                      | Lang_parser.PP_ENDIF -> token lexbuf
-                      | _ -> skip ()
-                  in
-                    skip ()
-            | _ -> failwith "expected a variable after %ifdef"
-          end
+        last_dot := false;
+        var := Some [];
+        token lexbuf
       | Lang_parser.PP_ENDIF ->
-          if !state=0 then failwith "no %ifdef to end here" ;
-          decr state ;
-          token lexbuf
-      | x -> x
+        if !state=0 then failwith "no %ifdef to end here" ;
+        decr state ;
+        last_dot := false;
+        var := None ;
+        token lexbuf
+      | Lang_parser.FIELD as x ->
+        (
+          match !var with
+            | None ->
+              last_dot := false;
+              x
+            | Some var ->
+              if var = [] then failwith "%ifdef variable should not begin with a dot";
+              last_dot := true;
+              token lexbuf
+        )
+      | (Lang_parser.VAR v) as x ->
+        let x =
+          match !var with
+            | None -> x
+            | Some [] ->
+              var := Some [v];
+              last_dot := false;
+              token lexbuf
+            | Some vv ->
+              if !last_dot then
+                (
+                  var := Some (v::vv);
+                  last_dot := false;
+                  token lexbuf
+                )
+              else
+                (
+                  var_done ();
+                  x
+                )
+        in
+        x
+      | x ->
+        last_dot := false;
+        (
+          match !var with
+            | None -> ()
+            | Some [] -> failwith "expected a variable after %ifdef"
+            | Some _ -> var_done ()
+        );
+        x
   in
-    token
+  token
 
 (** Expand %include statements by inserting the content of files.
   * Filenames are understood relatively to the current directory,
