@@ -204,7 +204,9 @@ synth = synth/keyboard.ml synth/synth_op.ml
 
 $(call conditional_compilation,synth,$(W_DSSI),synth/dssi_op.ml)
 
-builtins = lang/lang_builtins.ml \
+builtins = \
+  lang/lang_builtins.ml \
+  lang/builtins_record.ml \
 	$(if $(W_YOJSON),lang/builtins_json.ml)
 
 $(call conditional_compilation,builtins,$(W_LO),lang/builtins_lo.ml)

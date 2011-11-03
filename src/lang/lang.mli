@@ -150,6 +150,7 @@ val add_operator :
 
 val to_unit : value -> unit
 val to_bool : value -> bool
+val to_record : value -> (string*value) list
 val to_string : value -> string
 val to_string_getter : value -> unit -> string
 val to_float : value -> float
@@ -169,12 +170,16 @@ val to_source_list : value -> Source.source list
   * This is useful for retrieving arguments of a function. *)
 val assoc : 'a -> int -> ('a * 'b) list -> 'b
 
-val int_t      : t
-val unit_t     : t
-val float_t    : t
-val bool_t     : t
-val string_t   : t
-val product_t  : t -> t -> t
+val int_t    : t
+val unit_t   : t
+val float_t  : t
+val bool_t   : t
+val string_t : t
+
+val record_t    : ?t:t -> (string*t) list -> t
+val of_record_t : t -> (string*t) list * t option
+
+val product_t    : t -> t -> t
 val of_product_t : t -> t * t
 
 val list_t     : t -> t
@@ -222,6 +227,7 @@ val unit : value
 val int : int -> value
 val bool : bool -> value
 val float : float -> value
+val record : ?t:t -> (string*value) list -> value
 val string : string -> value
 val list : t:t -> value list -> value
 val source : Source.source -> value

@@ -48,6 +48,11 @@ let of_list_t t = match (T.deref t).T.descr with
   | T.List t -> t
   | _ -> assert false
 
+let record_t ?t l = T.make (T.Record (l,t))
+let of_record_t t = match (T.deref t).T.descr with
+  | T.Record (l,r) -> l,r
+  | _ -> assert false
+
 let metadata_t = list_t (product_t string_t string_t)
 
 let zero_t = Term.zero_t
@@ -223,6 +228,10 @@ let string i = mk string_t (String i)
 let product a b = mk (product_t a.t b.t) (Product (a,b))
 
 let list ~t l = mk (list_t t) (List l)
+
+let record ?t l = 
+  let lt = List.map (fun (x,y) -> (x,y.t)) l in
+  mk (record_t ?t lt) (Record l)
 
 let source s =
   mk (source_t (kind_type_of_frame_kind s#kind)) (Source s)
@@ -478,6 +487,10 @@ let to_unit t = match t.value with
 
 let to_bool t = match t.value with
   | Bool b -> b
+  | _ -> assert false
+
+let to_record t = match t.value with
+  | Record l -> l
   | _ -> assert false
 
 let to_string t = match t.value with
