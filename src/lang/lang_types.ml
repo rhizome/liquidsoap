@@ -125,20 +125,24 @@ and descr =
   | Product of t * t
   | Zero | Succ of t | Variable
   | Arrow     of (bool*string*t) list * t
-  | EVar      of int*constraints (* type variable *)
+  | EVar      of (int*constraints) (* type variable *)
   | Link      of t
-  (* The second member is an optional row variable, which is either an evar or a Record. *)
   | Record    of record
-and record = (string * t) list * t option
+(* The second member is an optional row variable, which is either an evar or a
+   Record. *)
+and record = (string * scheme) list * t option
+(* A scheme consists of a list of generalized evars and a type. Notice that the
+   generalized evars should be deref'ed since it can contain links! *)
+and scheme = t list * t
 
 type repr = [
-  | `Constr  of string * (variance*repr) list
-  | `Ground  of ground
-  | `List    of repr
-  | `Product of repr * repr
-  | `Zero | `Succ of repr | `Variable
-  | `Arrow     of (bool*string*repr) list * repr
-  | `EVar      of string*constraints (* existential variable *)
+| `Constr  of string * (variance*repr) list
+| `Ground  of ground
+| `List    of repr
+| `Product of repr * repr
+| `Zero | `Succ of repr | `Variable
+| `Arrow     of (bool*string*repr) list * repr
+| `EVar      of string*constraints (* existential variable *)
   | `UVar      of string*constraints (* universal variable *)
   | `Record of (string*repr) list * repr option
   | `Ellipsis       (* omitted sub-term *)
@@ -178,8 +182,22 @@ let rec deref t = match t.descr with
   | Record r -> { t with descr = Record (merge_record r) }
   | _ -> t
 
+(** Names of a list of generated variables. *)
+(* TODO: shouldn't we always use the ref representation and not the named
+   one? *)
+let generalized_names l =
+  let rec name t =
+    let t = deref t in
+    match t.descr with
+      | EVar nc -> Some nc
+      | Record (_, None) -> None
+      | Record (_, Some t) -> name t
+      | _ -> assert false
+  in
+  Utils.may_map name l
+
 (** Given a strictly positive integer, generate a name in [a-z]+:
-  * a, b, ... z, aa, ab, ... az, ba, ... *)
+    * a, b, ... z, aa, ab, ... az, ba, ... *)
 let name =
   let base = 26 in
   let c i = char_of_int (int_of_char 'a' + i - 1) in
@@ -236,8 +254,9 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
         in
           `EVar (Printf.sprintf "?%s%s" constr_symbols s, c)
   in
-  let generalized i = List.exists (fun (j,_) -> j=i) generalized in
-  let rec repr t =
+  let is_generalized i = List.exists (fun (j,_) -> j=i) generalized in
+  let rec repr ~generalized t =
+    let repr ?(generalized=generalized) t = repr ~generalized t in
     if filter_out t then `Ellipsis else
       match t.descr with
         | Ground g -> `Ground g
@@ -253,22 +272,21 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
             `Arrow (List.map (fun (opt,lbl,t) -> opt,lbl,repr t) args,
                     repr t)
         | EVar (id,c) ->
-            if generalized id then
+            if is_generalized id then
               uvar id c
             else
               evar id c
         | Link t -> repr t
         | Record r ->
-          (* TODO: shall we display the row variables? *)
           let r, row = merge_record r in
           let row =
             match row with
               | Some row -> Some (repr row)
               | None -> None
           in
-          `Record (List.map (fun (x,t) -> x, repr t) r, row)
+          `Record (List.map (fun (x,(g,t)) -> x, repr ~generalized:((generalized_names g)@generalized) t) r, row)
   in
-    repr t
+    repr ~generalized t
 
 (** Sets of type descriptions. *)
 module DS =
@@ -473,9 +491,10 @@ exception Unsatisfied_constraint of constr*t
 
 (** Check that [a] (a dereferenced type variable) does not occur in [b],
   * and prepare the instantiation [a<-b] by adjusting the levels. *)
-let rec occur_check a b =
+let rec occur_check ?(generalized=[]) a b =
+  let occur_check ?(generalized=generalized) a b = occur_check ~generalized a b in
   let b = deref b in
-    if a == b then raise (Occur_check (a,b)) ;
+    if a == b && not (List.memq a generalized) then raise (Occur_check (a,b)) ;
     match b.descr with
       | Constr c -> List.iter (fun (_,x) -> occur_check a x) c.params
       | Product (t1,t2) -> occur_check a t1 ; occur_check a t2
@@ -502,7 +521,7 @@ let rec occur_check a b =
       | Record r ->
         (* We should not have to check occurences in row variables. *)
         let r, _ = merge_record r in
-        List.iter (fun (_,t) -> occur_check a t) r
+        List.iter (fun (_,(g,t)) -> occur_check ~generalized:((List.map deref g)@generalized) a t) r
 
 (* Perform [a := b] where [a] is an EVar, check that [type(a)<:type(b)]. *)
 let rec bind a0 b =
@@ -718,12 +737,13 @@ let rec (<:) a b =
                                          `Product (`Ellipsis,b)))
         end
     | Record r1, Record r2 ->
+      (* TODO: we could drop some generalized variables that are not used anymore. *)
       let rec1, row1 = merge_record r1 in
       let rec2, row2 = merge_record r2 in
       List.iter
-        (fun (x,t2) ->
+        (fun (x,(g2,t2)) ->
           try
-            let t1 = List.assoc x rec1 in
+            let t1 = snd (List.assoc x rec1) in
             try t1 <: t2 with
               | Error (a,b) ->
                 let rec1, row1 = merge_record r1 in
@@ -735,7 +755,7 @@ let rec (<:) a b =
               match row1 with
                 | None ->
                   (* No row type, sorry. *)
-                  let rec1 = List.map (fun (x',t1) -> x', if x' = x then repr t1 else `Ellipsis) rec1 in
+                  let rec1 = List.map (fun (x',(g1,t1)) -> x', if x' = x then repr ~generalized:(generalized_names g1) t1 else `Ellipsis) rec1 in
                   let rec2 =
                     (* Handles both records and non-records *)
                     let fo = ref false in
@@ -755,7 +775,7 @@ let rec (<:) a b =
                       | Link ({ descr = Record r } as t) -> t, r
                       | _ -> assert false
                   in
-                  let r = (x,t2)::r in
+                  let r = (x,(g2,t2))::r in
                   let t = { t with descr = Record (r, row) } in
                   row1.descr <- Link t
         ) rec2;
@@ -921,7 +941,9 @@ let (<:) a b =
   * in the outermost type or not. *)
 
 let filter_vars f t =
-  let rec aux l t = let t = deref t in match t.descr with
+  let rec aux ?(generalized=[]) l t =
+    let aux ?(generalized=generalized) l t = aux ~generalized l t in
+    let t = deref t in match t.descr with
     | Ground _ | Zero | Variable -> l
     | Succ t | List t -> aux l t
     | Product (a,b) -> aux (aux l a) b
@@ -930,12 +952,11 @@ let filter_vars f t =
     | Arrow (p,t) ->
         aux (List.fold_left (fun l (_,_,t) -> aux l t) l p) t
     | EVar (i,constraints) ->
-        if f t then (i,constraints)::l else l
+        if not (List.memq t generalized) && f t then t::l else l
     | Link _ -> assert false
     | Record r ->
-      (* TODO: also filter row vars? *)
       let r,_ = merge_record r in
-      List.fold_left (fun l (x,t) -> aux l t) l r
+      List.fold_left (fun l (x,(r,t)) -> aux ~generalized:((List.map deref r)@generalized) l t) l r
   in
     aux [] t
 
@@ -943,8 +964,17 @@ let filter_vars f t =
   * This is performed after type inference on the left-hand side
   * of a let-in, with [level] being the level of that let-in.
   * Uses the simple method of ML, to be associated with a value restriction. *)
-let generalizable ~level t =
+let generalizable ?level t =
+  let level =
+    match level with
+      | Some l -> l
+      | None -> t.level
+  in
   filter_vars (fun t -> t.level >= level) t
+
+let generalize ?level t =
+  let g = generalizable ?level t in
+  g,t
 
 (** Copy a term, substituting some EVars as indicated by a list
   * of associations. Other EVars are not copied, so sharing is
@@ -976,7 +1006,7 @@ let copy_with subst t =
             cp (Link (aux t))
         | Record r ->
           let r, row = merge_record r in
-          let r = List.map (fun (x,t) -> x, aux t) r in
+          let r = List.map (fun (x,(g,t)) -> x,(g,aux t)) r in
           cp (Record (r, row))
   in
     aux t

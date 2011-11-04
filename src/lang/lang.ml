@@ -229,8 +229,8 @@ let product a b = mk (product_t a.t b.t) (Product (a,b))
 
 let list ~t l = mk (list_t t) (List l)
 
-let record ?t l = 
-  let lt = List.map (fun (x,y) -> (x,y.t)) l in
+let record ?t l =
+  let lt = List.map (fun (x,y) -> x,T.generalize y.t) l in
   mk (record_t ?t lt) (Record l)
 
 let source s =
@@ -303,7 +303,7 @@ let builtin_type p t =
 let to_doc category flags main_doc proto return_t =
   let item = new Doc.item ~sort:false main_doc in
   let t = builtin_type proto return_t in
-  let generalized = T.filter_vars (fun _ -> true) t in
+  let generalized = T.generalized_names (T.filter_vars (fun _ -> true) t) in
     item#add_subsection "_category" (Doc.trivial category) ;
     item#add_subsection "_type" (T.doc_of_type ~generalized t) ;
     List.iter
@@ -325,7 +325,7 @@ let add_builtin ~category ~descr ?(flags=[]) name proto return_t f =
                    [],
                    f) }
   in
-  let generalized = T.filter_vars (fun _ -> true) t in
+  let generalized = T.generalized_names (T.filter_vars (fun _ -> true) t) in
     Term.builtins#register
       ~doc:(to_doc category flags descr proto return_t)
       name
@@ -334,7 +334,7 @@ let add_builtin ~category ~descr ?(flags=[]) name proto return_t f =
 let add_builtin_base ~category ~descr ?(flags=[]) name value t =
   let doc = new Doc.item ~sort:false descr in
   let value = { t = t ; value = value } in
-  let generalized = T.filter_vars (fun _ -> true) t in
+  let generalized = T.generalized_names (T.filter_vars (fun _ -> true) t) in
     doc#add_subsection "_category" (Doc.trivial category) ;
     doc#add_subsection "_type" (T.doc_of_type ~generalized t) ;
     List.iter

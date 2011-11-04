@@ -538,8 +538,8 @@ let builtins : (((int*T.constraints) list) * V.value) Plug.plug =
           let r = Utils.remove_assoc x r in
           let r = (x,rx)::r in
           let r = V.Record r in
-          let tr = Utils.remove_assoc x tr  in
-          let tr = (x,rx.V.t)::tr in
+          let tr = Utils.remove_assoc x tr in
+          let tr = (x,(T.generalize rx.V.t))::tr in
           let tr = record_t ~row:false tr in
           { V.t = tr; value = r }
     in
@@ -632,13 +632,16 @@ let rec check ?(print_toplevel=false) ~level ~env e =
         List.iter (fun item -> item.t <: v) l
   | Record r ->
     List.iter (fun (_,tm) -> check ~level ~env tm) r ;
-    let tr = List.map (fun (x,_) -> x, T.fresh_evar ~level ~pos) r in
+    let tr = List.map (fun (x,_) -> x,T.fresh_evar ~level ~pos) r in
     List.iter (fun (x,item) -> item.t <: List.assoc x tr) r;
+    let tr = List.map (fun (x,t) -> x,(T.generalize t)) tr in
     e.t >: record_t ~row:false tr
   | Field (r,x) ->
     check ~level ~env r ;
     let v = T.fresh_evar ~level ~pos in
-    r.t <: record_t ~row:true [x,v];
+    r.t <: record_t ~row:true [x,([],v)];
+    let g = T.generalizable ~level v in
+    let v = T.instantiate ~level ~generalized:(T.generalized_names g) v in
     e.t >: v
   | Replace_field (r,x,v) ->
     check ~level ~env v;
@@ -651,7 +654,7 @@ let rec check ?(print_toplevel=false) ~level ~env e =
         | _ -> assert false
     in
     let rt = Utils.remove_assoc x rt in
-    let rt = (x,v.t)::rt in
+    let rt = (x,(T.generalize v.t))::rt in
     let rt = mk (T.Record (rt, row)) in
     e.t >: rt
   | Product (a,b) ->
@@ -774,6 +777,7 @@ let rec check ?(print_toplevel=false) ~level ~env e =
                    | _ -> assert false)
                 t
             in
+            let x' = T.generalized_names x' in
               x'@x
           in
             fold_types f [] [] def

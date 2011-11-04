@@ -42,10 +42,11 @@ and descr =
   | Product of t * t
   | Zero | Succ of t | Variable
   | Arrow of (bool * string * t) list * t
-  | EVar of int * constraints
+  | EVar of (int * constraints)
   | Link of t
   | Record of record
-and record = (string * t) list * t option
+and record = (string * scheme) list * t option
+and scheme = t list * t
 
 val merge_record : record -> record
 
@@ -59,15 +60,17 @@ val print : ?generalized:((int*constraints) list) -> t -> string
 val doc_of_type : generalized:((int*constraints) list) -> t -> Doc.item
 
 exception Occur_check of t*t
-val occur_check : t -> t -> unit
+val occur_check : ?generalized:(t list) -> t -> t -> unit
 
 exception Unsatisfied_constraint of constr*t
 val bind : t -> t -> unit
 val deref : t -> t
-val filter_vars : (t -> bool) -> t -> (int*constraints) list
+val generalized_names : t list -> (int * constraints) list
+val filter_vars : (t -> bool) -> t -> t list
 val copy_with : ((int*constraints)*t) list -> t -> t
 val instantiate : level:int -> generalized:((int*constraints) list) -> t -> t
-val generalizable : level:int -> t -> (int*constraints) list
+val generalizable : ?level:int -> t -> t list
+val generalize : ?level:int -> t -> scheme
 
 type explanation
 exception Type_Error of explanation
@@ -77,4 +80,4 @@ val ( >: ) : t -> t -> unit
 
 val fresh : constraints:constraints -> level:int -> pos:pos option -> t
 val fresh_evar : level:int -> pos:pos option -> t
-val record : ?level:int -> row:bool -> (string * t) list -> t
+val record : ?level:int -> row:bool -> (string * scheme) list -> t

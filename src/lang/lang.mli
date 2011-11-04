@@ -176,8 +176,8 @@ val float_t  : t
 val bool_t   : t
 val string_t : t
 
-val record_t    : ?t:t -> (string*t) list -> t
-val of_record_t : t -> (string*t) list * t option
+val record_t    : ?t:t -> (string*Lang_types.scheme) list -> t
+val of_record_t : t -> (string*Lang_types.scheme) list * t option
 
 val product_t    : t -> t -> t
 val of_product_t : t -> t * t
