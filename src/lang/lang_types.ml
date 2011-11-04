@@ -763,8 +763,12 @@ let rec (<:) a b =
         let r1, row1 = merge_record r1 in
         (
           match row1, row2 with
-            | None, _ -> ()
-            | Some row1, None -> row1.descr <- Link (record ~level:row1.level ~row:true [])
+            | None, None -> ()
+            | None, Some row2 ->
+              (* TODO: add other fields present in r1 but not in r2, in order to
+                 be as general as possible? *)
+              row2.descr <- Link (make ~level:row2.level (Record ([], None)))
+            | Some row1, None -> ()
             | Some row1, Some row2 ->
               (* Occurs-check *)
               if row1 <> row2 then
