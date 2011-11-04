@@ -760,14 +760,13 @@ let rec (<:) a b =
                   row1.descr <- Link t
         ) rec2;
         (* Then we unify the row variables. *)
-        let r1, row1 = merge_record r1 in
+        let rec1, row1 = merge_record r1 in
         (
           match row1, row2 with
             | None, None -> ()
             | None, Some row2 ->
-              (* TODO: add other fields present in r1 but not in r2, in order to
-                 be as general as possible? *)
-              row2.descr <- Link (make ~level:row2.level (Record ([], None)))
+              let rec1 = List.filter (fun (x,_) -> not (List.mem_assoc x rec2)) rec1 in
+              row2.descr <- Link (make ~level:row2.level (Record (rec1, None)))
             | Some row1, None -> ()
             | Some row1, Some row2 ->
               (* Occurs-check *)
