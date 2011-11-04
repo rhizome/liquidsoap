@@ -80,21 +80,21 @@ end
 # it is the default output after dummy, so the input will be a dummy
 # when AO is used for output.
 
-output.prefered=output.dummy
+def output.prefered = output.dummy end
 %ifdef output.ao
-  output.prefered=output.ao
+  def output.prefered=output.ao end
 %endif
 %ifdef output.alsa
-  output.prefered=output.alsa
+  def output.prefered=output.alsa end
 %endif
 %ifdef output.oss
-  output.prefered=output.oss
+  def output.prefered=output.oss end
 %endif
 %ifdef output.portaudio
-  output.prefered = output.portaudio
+  def output.prefered = output.portaudio end
 %endif
 %ifdef output.pulseaudio
-  output.prefered=output.pulseaudio
+  def output.prefered=output.pulseaudio end
 %endif
 # Output to local audio card using the first available driver in
 # pulseaudio, portaudio, oss, alsa, ao, dummy.
@@ -405,8 +405,8 @@ def smart_crossfade (~start_next=5.,~fade_in=3.,~fade_out=3.,
                      ~default=(fun (a,b) -> sequence([a, b])),
                      ~high=-15., ~medium=-32., ~margin=4.,
                      ~width=2.,~conservative=false,s)
-  fade.out = fade.out(type="sin",duration=fade_out)
-  fade.in  = fade.in(type="sin",duration=fade_in)
+  def fade.out = fade.out(type="sin",duration=fade_out) end
+  def fade.in  = fade.in(type="sin",duration=fade_in) end
   add = fun (a,b) -> add(normalize=false,[b, a])
   log = log(label="smart_crossfade")
 
@@ -553,7 +553,7 @@ end
 # Custom playlist source written using the script language.
 # Will read directory or playlist, play all files and stop
 # @category Source / Input
-# @param ~id Force the value of the source ID. 
+# @param ~id Force the value of the source ID.
 # @param ~random Randomize playlist content
 # @param ~on_done Function to execute when the playlist is finished
 # @param uri Playlist URI
@@ -571,8 +571,8 @@ end
 # @param ~special The special source.
 def smooth_add(~delay=0.5,~p=0.2,~normal,~special)
   d = delay
-  fade.final = fade.final(duration=d*2.)
-  fade.initial = fade.initial(duration=d*2.)
+  def fade.final = fade.final(duration=d*2.) end
+  def fade.initial = fade.initial(duration=d*2.) end
   q = 1. - p
   c = amplify
   fallback(track_sensitive=false,
