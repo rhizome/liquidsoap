@@ -684,7 +684,7 @@ let constr_sub x y =
 (** Ensure that a<:b, perform unification if needed.
   * In case of error, generate an explaination. *)
 let rec (<:) a b =
-  if debug then Printf.eprintf "%s <: %s\n" (print a) (print b) ;
+  if debug then Printf.eprintf "%s <: %s\n%!" (print a) (print b) ;
   match (deref a).descr, (deref b).descr with
     | Constr c1, Constr c2 when constr_sub c1.name c2.name ->
         let rec aux pre p1 p2 =
@@ -726,6 +726,7 @@ let rec (<:) a b =
             let t1 = List.assoc x rec1 in
             try t1 <: t2 with
               | Error (a,b) ->
+                let rec1, row1 = merge_record r1 in
                 let rec1 = List.map (fun (x',_) -> x', if x' = x then a else `Ellipsis) rec1 in
                 let rec2 = List.map (fun (x',_) -> x', if x' = x then b else `Ellipsis) rec2 in
                 raise (Error (`Record (rec1, Utils.may repr row1), `Record (rec2, Utils.may repr row2)))

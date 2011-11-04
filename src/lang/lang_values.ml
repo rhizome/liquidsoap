@@ -548,8 +548,8 @@ let builtins : (((int*T.constraints) list) * V.value) Plug.plug =
         | Some (cr,r) -> cr,Some r
         | None -> [], None
     in
-    (* TODO: we should rename type scheme variables to ensure that there is no
-       conflict!... *)
+    (* TODO: should we rename type scheme variables to ensure that there is no
+       conflict?... *)
     (c@cr), aux r x
   in
   Plug.create ~split_name ~doc:"scripting values" "scripting values"
@@ -727,13 +727,13 @@ let rec check ?(print_toplevel=false) ~level ~env e =
           (fun (p,env,level) -> function
              | lbl,var,kind,None   ->
                  if debug then
-                   Printf.eprintf "Assigning level %d to %s (%s).\n"
+                   Printf.eprintf "Assigning level %d to %s (%s).\n%!"
                      level var (T.print kind) ;
                  kind.T.level <- level ;
                  (false,lbl,kind)::p, (var,([],kind))::env, level+1
              | lbl,var,kind,Some v ->
                  if debug then
-                   Printf.eprintf "Assigning level %d to %s (%s).\n"
+                   Printf.eprintf "Assigning level %d to %s (%s).\n%!"
                      level var (T.print kind) ;
                  kind.T.level <- level ;
                  base_check v ;
@@ -758,7 +758,7 @@ let rec check ?(print_toplevel=false) ~level ~env e =
       in
         e.t >: T.instantiate ~level ~generalized orig ;
         if debug then
-          Printf.eprintf "Instantiate %s[%d] : %s becomes %s\n"
+          Printf.eprintf "Instantiate %s[%d] : %s becomes %s\n%!"
             var (T.deref e.t).T.level (T.print orig) (T.print e.t)
   | Let ({gen=gen; var=name; def=def; body=body} as l) ->
       check ~level:level ~env def ;
@@ -867,14 +867,14 @@ let lookup env var ty =
   let v = instantiate ~generalized def in
     if debug then
       Printf.eprintf
-        "Runtime instantiation of %s: %s targets %s.\n"
+        "Runtime instantiation of %s: %s targets %s.\n%!"
         var
         (T.print ~generalized def.V.t)
         (T.print ty) ;
     v.V.t <: ty ;
     if debug then
       Printf.eprintf
-        "Runtime instantiation of %s: %s becomes %s.\n"
+        "Runtime instantiation of %s: %s becomes %s.\n%!"
         var
         (T.print ~generalized def.V.t)
         (T.print v.V.t) ;
@@ -1065,7 +1065,7 @@ let rec eval_toplevel ?(interactive=false) t =
         let def = eval ~env def in
           toplevel_add comment name ~generalized def ;
           if debug then
-            Printf.eprintf "Added toplevel %s : %s\n"
+            Printf.eprintf "Added toplevel %s : %s\n%!"
               name (T.print ~generalized def.V.t) ;
           if interactive then
             Format.printf "@[<2>%s :@ %a =@ %s@]@."
