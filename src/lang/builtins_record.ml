@@ -33,4 +33,11 @@ let () =
      let l = Lang.to_record (List.assoc "" p) in
      let l = List.map fst l in
      let l = List.map Lang.string l in
-     Lang.list ~t:Lang.string_t l) 
+     Lang.list ~t:Lang.string_t l)
+
+let () =
+  add_builtin "record.empty" ~cat:Liq
+    ~descr:"Create a fresh, empty record."
+   [] (Lang.record_t [])
+   (fun p ->
+     Lang.record []) 
