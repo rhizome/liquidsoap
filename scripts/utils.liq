@@ -141,7 +141,7 @@ end
 # @category Source / Track Processing
 # @param ~input The input source
 # @param f The fallback source
-def fallback.skip(~input,f)
+def skip_fallback(~input,f)
   def transition(a,b) =
     source.skip(a)
     # This eats the last remaining frame from a
@@ -336,8 +336,8 @@ end
 %ifdef file.mime
 # Alias of file.mime (because it is available)
 # @category System
-def file.mime_default(file)
- file.mime(file)
+def file.mime_default(f)
+ file.mime(f)
 end
 %endif
 
@@ -346,22 +346,22 @@ end
 # Returns "" (empty string) if no value can be find.
 # @category System
 # @param file The file to test
-def get_mime(file) =
-  def file_method(file) =
+def get_mime(f) =
+  def file_method(f) =
     if test_process("which file") then
       list.hd(get_process_lines("file -b --mime-type \
-                                  #{quote(file)}"))
+                                  #{quote(f)}"))
     else
       ""
     end
   end
   # First try mime method
-  ret = file.mime_default(file)
+  ret = file.mime_default(f)
   if ret != "" then
     ret 
   else
     # Now try file method
-    file_method(file)
+    file_method(f)
   end
 end
 
@@ -370,7 +370,7 @@ end
 # @category Source / Sound Processing
 # @param s The input source.
 def mic_filter(s)
-  filter(freq=200.,q=1.,mode="high",s)
+  filter.state_variable(freq=200.,q=1.,mode="high",s)
 end
 
 # Creates a source that fails to produce anything.
@@ -469,6 +469,9 @@ def smart_crossfade (~start_next=5.,~fade_in=3.,~fade_out=3.,
               transition,s)
 end
 
+# Hack because random gets masked by a labeled parameter below
+rnd = random
+
 # Custom playlist source written using the script language.
 # Will read directory or playlist, play all files and stop.
 # Returns a pair @(reload,source)@ where @reload@ is a function
@@ -482,18 +485,18 @@ end
 # @param uri Playlist URI
 def playlist.reloadable(~id="",~random=false,~on_done={()},uri)
   # A reference to the playlist
-  playlist = ref []
+  pl = ref []
   # A reference to the uri
-  playlist_uri = ref uri
+  pl_uri = ref uri
   # A reference to know if the source
   # has been stopped
   has_stopped = ref false
   # The next function
   def next () =
     file =
-      if list.length(!playlist) > 0 then
-        ret = list.hd(!playlist)
-        playlist := list.tl(!playlist)
+      if list.length(!pl) > 0 then
+        ret = list.hd(!pl)
+        pl := list.tl(!pl)
         ret
       else
         # Playlist finished
@@ -506,48 +509,48 @@ def playlist.reloadable(~id="",~random=false,~on_done={()},uri)
     request.create(file)
   end
   # Instanciate the source
-  source = request.dynamic(id=id,next)
+  s = request.dynamic(id=id,next)
   # Get its id.
-  id = source.id(source)
+  id = source.id(s)
   # The load function
   def load_playlist () = 
     files = 
-      if test_process("test -d #{quote(!playlist_uri)}") then
+      if test_process("test -d #{quote(!pl_uri)}") then
         log(label=id,"playlist is a directory.")
-        get_process_lines("find #{quote(!playlist_uri)} -type f | sort")
+        get_process_lines("find #{quote(!pl_uri)} -type f | sort")
       else
-        playlist = request.create.raw(!playlist_uri)
+        pl = request.create_raw(!pl_uri)
         result =
-          if request.resolve(playlist) then
-            playlist = request.filename(playlist)
-            files = playlist.parse(playlist)
+          if request.resolve(pl) then
+            pl = request.filename(pl)
+            files = playlist.parse(pl)
             list.map(snd,files)
           else
             log(label=id,"Couldn't read playlist: request resolution failed.")
             []
           end
-        request.destroy(playlist)
+        request.destroy(pl)
         result
       end
     if random then
-      playlist := list.sort(fun (x,y) -> int_of_float(random.float()), files)
+      pl := list.sort(fun (x,y) -> int_of_float(rnd.float()), files)
     else
-      playlist := files
+      pl := files
     end
   end
   # The reload function
   def reload(~uri="") =
     if uri != "" then
-      playlist_uri := uri
+      pl_uri := uri
     end
-    log(label=id,"Reloading playlist with URI #{!playlist_uri}")
+    log(label=id,"Reloading playlist with URI #{!pl_uri}")
     has_stopped := false
     load_playlist()
   end
   # Load the playlist
   load_playlist()
   # Return
-  (reload,source)
+  (reload,s)
 end
 
 # Custom playlist source written using the script language.

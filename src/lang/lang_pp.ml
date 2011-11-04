@@ -51,19 +51,23 @@ let preprocess tokenizer =
       match v with
         | Some r ->
           (
-            match xx with
+            let rec aux r = function
               | [] -> incr state
-              | [x] ->
+              | x::xx ->
                 (
-                  match (snd r).Lang_values.V.value with
+                  match r.Lang_values.V.value with
                     | Lang_values.V.Record r ->
-                      if List.mem_assoc x r then
-                        incr state
-                      else
-                        skip ()
+                      (
+                        try
+                          let r = List.assoc x r in
+                          aux r xx
+                        with
+                          | Not_found -> skip ()
+                      )
                     | _ -> skip ()
                 )
-              | _ -> failwith "TODO: too many fields in %ifdef"
+            in
+            aux (snd r) xx
           )
         | None -> skip ()
     in

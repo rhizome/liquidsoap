@@ -1738,7 +1738,7 @@ let () =
          Lang.list s_t (List.map (fun x -> Lang.source (x:>Source.source)) l))
 
 let () =
-  add_builtin "request.create.raw" ~cat:Liq
+  add_builtin "request.create_raw" ~cat:Liq
     ~descr:"Create a raw request, i.e. for files that should not be decoded \
             for streaming. Creation may fail if there is no available RID, \
             which cannot be detected currently: in that case one will obtain \

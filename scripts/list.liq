@@ -23,5 +23,5 @@ end
 # @param a Key of pair to be removed
 # @param l List of pairs (key,value)
 def list.remove_assoc(a,l)
-  list.remove((a,list.assoc(a,l)),l)
+  if list.mem_assoc(a,l) then list.remove((a,list.assoc(a,l)),l) else l end
 end
