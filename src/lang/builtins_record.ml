@@ -36,8 +36,7 @@ let () =
      Lang.list ~t:Lang.string_t l)
 
 let () =
-  add_builtin "record.empty" ~cat:Liq
-    ~descr:"Create a fresh, empty record."
-   [] (Lang.record_t [])
-   (fun p ->
-     Lang.record []) 
+  Lang.add_builtin_base "record.empty" 
+    ~category:(string_of_category Liq)
+    ~descr:"An empty record."
+    (Lang.Record []) (Lang.record_t [])
