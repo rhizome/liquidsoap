@@ -136,14 +136,15 @@ and record = (string * scheme) list * t option
 and scheme = t list * t
 
 type repr = [
-| `Constr  of string * (variance*repr) list
-| `Ground  of ground
-| `List    of repr
-| `Product of repr * repr
-| `Zero | `Succ of repr | `Variable
-| `Arrow     of (bool*string*repr) list * repr
-| `EVar      of string*constraints (* existential variable *)
+  | `Constr  of string * (variance*repr) list
+  | `Ground  of ground
+  | `List    of repr
+  | `Product of repr * repr
+  | `Zero | `Succ of repr | `Variable
+  | `Arrow     of (bool*string*repr) list * repr
+  | `EVar      of string*constraints (* existential variable *)
   | `UVar      of string*constraints (* universal variable *)
+  | `Scheme    of repr list*repr
   | `Record of (string*repr) list * repr option
   | `Ellipsis       (* omitted sub-term *)
   | `Range_Ellipsis (* omitted sub-terms (in a list, e.g. list of args) *)
@@ -192,7 +193,10 @@ let generalized_names l =
       | EVar nc -> Some nc
       | Record (_, None) -> None
       | Record (_, Some t) -> name t
-      | _ -> assert false
+      | _ ->
+        (* TODO: this means that we universally quantify over a non-variable... *)
+        (* assert false *)
+        None
   in
   Utils.may_map name l
 
@@ -284,7 +288,13 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
               | Some row -> Some (repr row)
               | None -> None
           in
-          `Record (List.map (fun (x,(g,t)) -> x, repr ~generalized:((generalized_names g)@generalized) t) r, row)
+          `Record
+            (List.map
+               (fun (x,(g,t)) ->
+                 let r = repr ~generalized:((generalized_names g)@generalized) t in
+                 let g = List.map repr g in
+                 x, `Scheme (g,r))
+               r, row)
   in
     repr ~generalized t
 
@@ -348,6 +358,17 @@ let print_repr f t =
         let vars = print ~par:false vars t in
         Format.fprintf f "]@]" ;
         vars
+    | `Scheme (g, a) ->
+      let _, vars =
+        List.fold_left
+          (fun (first,vars) g ->
+            if not first then Format.fprintf f " ";
+            Format.fprintf f "∀";
+            false,print ~par:true vars g
+          ) (true,vars) g
+      in
+      if g <> [] then Format.fprintf f " ";
+      print ~par vars a
     | `Record (r, row) ->
       Format.fprintf f "@[<1>[";
       let _,vars =
@@ -943,7 +964,8 @@ let (<:) a b =
 let filter_vars f t =
   let rec aux ?(generalized=[]) l t =
     let aux ?(generalized=generalized) l t = aux ~generalized l t in
-    let t = deref t in match t.descr with
+    let t = deref t in
+    match t.descr with
     | Ground _ | Zero | Variable -> l
     | Succ t | List t -> aux l t
     | Product (a,b) -> aux (aux l a) b
@@ -952,18 +974,23 @@ let filter_vars f t =
     | Arrow (p,t) ->
         aux (List.fold_left (fun l (_,_,t) -> aux l t) l p) t
     | EVar (i,constraints) ->
-        if not (List.memq t generalized) && f t then t::l else l
+        if not (List.memq t generalized) && not (List.memq t l) && f t then t::l else l
     | Link _ -> assert false
     | Record r ->
-      let r,_ = merge_record r in
+      let r,row = merge_record r in
+      let l =
+        match row with
+          | Some row -> aux l row
+          | None -> l
+      in
       List.fold_left (fun l (x,(r,t)) -> aux ~generalized:((List.map deref r)@generalized) l t) l r
   in
-    aux [] t
+  aux [] t
 
 (** Return a list of generalizable variables in a type.
-  * This is performed after type inference on the left-hand side
-  * of a let-in, with [level] being the level of that let-in.
-  * Uses the simple method of ML, to be associated with a value restriction. *)
+    * This is performed after type inference on the left-hand side
+    * of a let-in, with [level] being the level of that let-in.
+    * Uses the simple method of ML, to be associated with a value restriction. *)
 let generalizable ?level t =
   let level =
     match level with
