@@ -980,7 +980,11 @@ let filter_vars f t =
       let r,row = merge_record r in
       let l =
         match row with
-          | Some row -> aux l row
+          | Some row ->
+            (* TODO: this does not belong to the general filter_vars functions,
+               but it is only used by generalizable for now... *)
+            let l = if not (List.memq row l) then row::l else l in
+            aux l row
           | None -> l
       in
       List.fold_left (fun l (x,(r,t)) -> aux ~generalized:((List.map deref r)@generalized) l t) l r
