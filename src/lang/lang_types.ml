@@ -256,6 +256,8 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
               Hashtbl.add evars i name ;
               name
         in
+        (* TODO: for debugging, remove this *)
+        let s = Printf.sprintf "%s(%d)" s i in
           `EVar (Printf.sprintf "?%s%s" constr_symbols s, c)
   in
   let is_generalized i = List.exists (fun (j,_) -> j=i) generalized in
@@ -1037,7 +1039,9 @@ let copy_with subst t =
             cp (Link (aux t))
         | Record r ->
           let r, row = merge_record r in
-          let r = List.map (fun (x,(g,t)) -> x,(g,aux t)) r in
+          (* TODO: hide variables from g in the substitution! *)
+          let r = List.map (fun (x,(g,t)) -> x, (g, aux t)) r in
+          let row = Utils.may aux row in
           cp (Record (r, row))
   in
     aux t
