@@ -640,7 +640,13 @@ let rec check ?(print_toplevel=false) ~level ~env e =
     check ~level ~env r ;
     let v = T.fresh_evar ~level ~pos in
     r.t <: record_t ~row:true [x,([],v)];
-    let g = T.generalizable ~level v in
+    let g =
+      match (T.deref r.t).T.descr with
+        | T.Record (r, _) ->
+          (* TODO: handle Not_found *)
+          fst (List.assoc x r)
+        | _ -> assert false
+    in
     let v = T.instantiate ~level ~generalized:(T.generalized_names g) v in
     e.t >: v
   | Replace_field (r,x,v) ->
@@ -898,7 +904,9 @@ let rec eval ~env tm =
       | Record r -> mk (V.Record (List.map (fun (x,v) -> x, eval ~env v) r))
       | Field (r,x) ->
         begin match (eval ~env r).V.value with
-          | V.Record r -> List.assoc x r
+          | V.Record r ->
+            let v = List.assoc x r in
+            { v with V.t = tm.t }
           | _ -> assert false
         end
       | Replace_field (r,x,v) ->
