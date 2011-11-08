@@ -647,7 +647,7 @@ let rec check ?(print_toplevel=false) ~level ~env e =
           fst (List.assoc x r)
         | _ -> assert false
     in
-    let v = T.instantiate ~level ~generalized:(T.generalized_names g) v in
+    let v = T.instantiate ~level ~generalized:g v in
     e.t >: v
   | Replace_field (r,x,v) ->
     check ~level ~env v;
@@ -783,8 +783,7 @@ let rec check ?(print_toplevel=false) ~level ~env e =
                    | _ -> assert false)
                 t
             in
-            let x' = T.generalized_names x' in
-              x'@x
+            x'@x
           in
             fold_types f [] [] def
         else

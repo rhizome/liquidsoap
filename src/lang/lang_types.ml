@@ -125,15 +125,15 @@ and descr =
   | Product of t * t
   | Zero | Succ of t | Variable
   | Arrow     of (bool*string*t) list * t
-  | EVar      of (int*constraints) (* type variable *)
+  | EVar      of cvar (* type variable *)
   | Link      of t
   | Record    of record
 (* The second member is an optional row variable, which is either an evar or a
    Record. *)
 and record = (string * scheme) list * t option
-(* A scheme consists of a list of generalized evars and a type. Notice that the
-   generalized evars should be deref'ed since it can contain links! *)
-and scheme = t list * t
+(* A constrained variables *)
+and cvar = int * constraints
+and scheme = cvar list * t
 
 type repr = [
   | `Constr  of string * (variance*repr) list
@@ -144,8 +144,7 @@ type repr = [
   | `Arrow     of (bool*string*repr) list * repr
   | `EVar      of string*constraints (* existential variable *)
   | `UVar      of string*constraints (* universal variable *)
-  | `Scheme    of repr list*repr
-  | `Record of (string*repr) list * repr option
+  | `Record of (string*(string list*repr)) list * repr option
   | `Ellipsis       (* omitted sub-term *)
   | `Range_Ellipsis (* omitted sub-terms (in a list, e.g. list of args) *)
 ]
@@ -183,18 +182,6 @@ let rec deref t = match t.descr with
   | Record r -> { t with descr = Record (merge_record r) }
   | _ -> t
 
-(** Names of a list of generated variables. *)
-(* TODO: shouldn't we always use the ref representation and not the named
-   one? *)
-let generalized_names l =
-  let rec name t =
-    let t = deref t in
-    match t.descr with
-      | EVar nc -> nc
-      | _ -> assert false
-  in
-  List.map name l
-
 (** Given a strictly positive integer, generate a name in [a-z]+:
     * a, b, ... z, aa, ab, ... az, ba, ... *)
 let name =
@@ -224,18 +211,6 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
            | Some sym -> s^sym,constraints)
       ("",[]) c
   in
-  let uvar i c =
-    let constr_symbols,c = split_constr c in
-    let rec index n = function
-      | v::tl ->
-          if fst v = i then
-            Printf.sprintf "'%s%s" constr_symbols (name n)
-          else
-            index (n+1) tl
-      | [] -> assert false
-    in
-      `UVar (index 1 (List.rev generalized), c)
-  in
   let counter = let c = ref 0 in fun () -> incr c ; !c in
   let evars = Hashtbl.create 10 in
   let evar i c =
@@ -255,9 +230,24 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
         let s = Printf.sprintf "%s(%d)" s i in
           `EVar (Printf.sprintf "?%s%s" constr_symbols s, c)
   in
-  let is_generalized i = List.exists (fun (j,_) -> j=i) generalized in
   let rec repr ~generalized t =
     let repr ?(generalized=generalized) t = repr ~generalized t in
+    let uvar_name ?(generalized=generalized) i c =
+      let constr_symbols,c = split_constr c in
+      let rec index n = function
+        | v::tl ->
+          if fst v = i then
+            Printf.sprintf "'%s%s" constr_symbols (name n)
+          else
+            index (n+1) tl
+        | [] -> assert false
+      in
+      index 1 (List.rev generalized)
+    in
+    let uvar i c =
+      `UVar (uvar_name i c, c)
+    in
+    let is_generalized i = List.exists (fun (j,_) -> j=i) generalized in
     if filter_out t then `Ellipsis else
       match t.descr with
         | Ground g -> `Ground g
@@ -285,12 +275,14 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
               | Some row -> Some (repr row)
               | None -> None
           in
+          let g = List.map (fun (_,(g,_)) -> g) r in
+          let g = List.concat g in
+          let g = List.rev g in
           `Record
             (List.map
-               (fun (x,(g,t)) ->
-                 let r = repr ~generalized:((generalized_names g)@generalized) t in
-                 let g = List.map repr g in
-                 x, `Scheme (g,r))
+               (fun (x,(_,t)) ->
+                 let r = repr ~generalized:(g@generalized) t in
+                 x, (List.rev (List.map (fun (i,c) -> uvar_name ~generalized:(g@generalized) i c) g),r))
                r, row)
   in
     repr ~generalized t
@@ -355,24 +347,14 @@ let print_repr f t =
         let vars = print ~par:false vars t in
         Format.fprintf f "]@]" ;
         vars
-    | `Scheme (g, a) ->
-      let _, vars =
-        List.fold_left
-          (fun (first,vars) g ->
-            if not first then Format.fprintf f " ";
-            Format.fprintf f "∀";
-            false,print ~par:true vars g
-          ) (true,vars) g
-      in
-      if g <> [] then Format.fprintf f " ";
-      print ~par vars a
     | `Record (r, row) ->
       Format.fprintf f "@[<1>[";
       let _,vars =
         List.fold_left
-          (fun (first,vars) (lbl,kind) ->
+          (fun (first,vars) (lbl,(g,kind)) ->
             if not first then Format.fprintf f ", @," ;
-            Format.fprintf f "%s:" lbl ;
+            let g = if g = [] then "" else ("∀" ^ String.concat " " g ^ " . ") in
+            Format.fprintf f "%s: %s" lbl g;
             let vars = print ~par:true vars kind in
             false, vars)
           (true,vars)
@@ -509,10 +491,9 @@ exception Unsatisfied_constraint of constr*t
 
 (** Check that [a] (a dereferenced type variable) does not occur in [b],
   * and prepare the instantiation [a<-b] by adjusting the levels. *)
-let rec occur_check ?(generalized=[]) a b =
-  let occur_check ?(generalized=generalized) a b = occur_check ~generalized a b in
+let rec occur_check a b =
   let b = deref b in
-    if a == b && not (List.memq a generalized) then raise (Occur_check (a,b)) ;
+    if a == b then raise (Occur_check (a,b)) ;
     match b.descr with
       | Constr c -> List.iter (fun (_,x) -> occur_check a x) c.params
       | Product (t1,t2) -> occur_check a t1 ; occur_check a t2
@@ -539,7 +520,7 @@ let rec occur_check ?(generalized=[]) a b =
       | Record r ->
         (* We should not have to check occurences in row variables. *)
         let r, _ = merge_record r in
-        List.iter (fun (_,(g,t)) -> occur_check ~generalized:((List.map deref g)@generalized) a t) r
+        List.iter (fun (_,(g,t)) -> occur_check a t) r
 
 (* Perform [a := b] where [a] is an EVar, check that [type(a)<:type(b)]. *)
 let rec bind a0 b =
@@ -765,21 +746,24 @@ let rec (<:) a b =
             try t1 <: t2 with
               | Error (a,b) ->
                 let rec1, row1 = merge_record r1 in
-                let rec1 = List.map (fun (x',_) -> x', if x' = x then a else `Ellipsis) rec1 in
-                let rec2 = List.map (fun (x',_) -> x', if x' = x then b else `Ellipsis) rec2 in
+                (* TODO: correctly display the generalized variables *)
+                let rec1 = List.map (fun (x',(g,_)) -> x', if x' = x then ([],a) else ([],`Ellipsis)) rec1 in
+                let rec2 = List.map (fun (x',(g,_)) -> x', if x' = x then ([],b) else ([],`Ellipsis)) rec2 in
                 raise (Error (`Record (rec1, Utils.may repr row1), `Record (rec2, Utils.may repr row2)))
           with
             | Not_found ->
               match row1 with
                 | None ->
                   (* No row type, sorry. *)
-                  let rec1 = List.map (fun (x',(g1,t1)) -> x', if x' = x then repr ~generalized:(generalized_names g1) t1 else `Ellipsis) rec1 in
+                  let rec1 = List.map (fun (x',(g1,t1)) -> x', if x' = x then repr ~generalized:g1 t1 else `Ellipsis) rec1 in
                   let rec2 =
                     (* Handles both records and non-records *)
                     let fo = ref false in
                     let filter_out _ = !fo || (fo := true; false) in
                     repr ~filter_out (deref b)
                   in
+                  (* TODO: correctly display the generalized variables *)
+                  let rec1 = List.map (fun (x,r) -> x,([],r)) rec1 in
                   raise (Error (`Record (rec1, Utils.may repr row1), rec2))
                 | Some row1 ->
                   (* We have a row type, add a field to it. *)
@@ -970,8 +954,8 @@ let filter_vars f t =
         List.fold_left (fun l (_,t) -> aux l t) l c.params
     | Arrow (p,t) ->
         aux (List.fold_left (fun l (_,_,t) -> aux l t) l p) t
-    | EVar (i,constraints) ->
-        if not (List.memq t generalized) && not (List.memq t l) && f t then t::l else l
+    | EVar ic ->
+        if not (List.mem ic generalized) && not (List.mem ic l) && f t then ic::l else l
     | Link _ -> assert false
     | Record r ->
       let r,row = merge_record r in
@@ -980,11 +964,18 @@ let filter_vars f t =
           | Some row ->
             (* TODO: this does not belong to the general filter_vars functions,
                but it is only used by generalizable for now... *)
-            let l = if not (List.memq row l) then row::l else l in
+            let l =
+              let row =
+                match (deref row).descr with
+                  | EVar ic -> ic
+                  | _ -> assert false
+              in
+              if not (List.mem row l) then row::l else l
+            in
             aux l row
           | None -> l
       in
-      List.fold_left (fun l (x,(r,t)) -> aux ~generalized:((List.map deref r)@generalized) l t) l r
+      List.fold_left (fun l (x,(g,t)) -> aux ~generalized:(g@generalized) l t) l r
   in
   aux [] t
 

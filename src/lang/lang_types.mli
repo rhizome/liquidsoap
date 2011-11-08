@@ -46,7 +46,8 @@ and descr =
   | Link of t
   | Record of record
 and record = (string * scheme) list * t option
-and scheme = t list * t
+and cvar = int * constraints
+and scheme = cvar list * t
 
 val merge_record : record -> record
 
@@ -60,16 +61,15 @@ val print : ?generalized:((int*constraints) list) -> t -> string
 val doc_of_type : generalized:((int*constraints) list) -> t -> Doc.item
 
 exception Occur_check of t*t
-val occur_check : ?generalized:(t list) -> t -> t -> unit
+val occur_check : t -> t -> unit
 
 exception Unsatisfied_constraint of constr*t
 val bind : t -> t -> unit
 val deref : t -> t
-val generalized_names : t list -> (int * constraints) list
-val filter_vars : (t -> bool) -> t -> t list
+val filter_vars : (t -> bool) -> t -> cvar list
 val copy_with : ((int*constraints)*t) list -> t -> t
 val instantiate : level:int -> generalized:((int*constraints) list) -> t -> t
-val generalizable : ?level:int -> t -> t list
+val generalizable : ?level:int -> t -> cvar list
 val generalize : ?level:int -> t -> scheme
 
 type explanation
