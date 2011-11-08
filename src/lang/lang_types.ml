@@ -190,15 +190,10 @@ let generalized_names l =
   let rec name t =
     let t = deref t in
     match t.descr with
-      | EVar nc -> Some nc
-      | Record (_, None) -> None
-      | Record (_, Some t) -> name t
-      | _ ->
-        (* TODO: this means that we universally quantify over a non-variable... *)
-        (* assert false *)
-        None
+      | EVar nc -> nc
+      | _ -> assert false
   in
-  Utils.may_map name l
+  List.map name l
 
 (** Given a strictly positive integer, generate a name in [a-z]+:
     * a, b, ... z, aa, ab, ... az, ba, ... *)
