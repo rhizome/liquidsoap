@@ -171,6 +171,7 @@ let rec merge_record r =
         | _ -> assert false
     in
     let r2, row = merge_record r2 in
+    let r2 = List.fold_left (fun r2 (x,_) -> List.remove_assoc x r2) r2 r1 in
     r1@r2, row
   | _ -> assert false
 
