@@ -63,6 +63,13 @@ let remove_one f l =
   in
     aux [] l
 
+let remove_duplicates l =
+  let rec aux = function
+    | x::t -> if List.mem x t then aux t else x::(aux t)
+    | [] -> []
+  in
+  aux l
+
 let rec may_map f = function
   | h::t ->
       begin match f h with

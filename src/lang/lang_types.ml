@@ -276,14 +276,12 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
               | Some row -> Some (repr row)
               | None -> None
           in
-          let g = List.map (fun (_,(g,_)) -> g) r in
-          let g = List.concat g in
-          let g = List.rev g in
           `Record
             (List.map
-               (fun (x,(_,t)) ->
-                 let r = repr ~generalized:(g@generalized) t in
-                 x, (List.rev (List.map (fun (i,c) -> uvar_name ~generalized:(g@generalized) i c) g),r))
+               (fun (x,(g,t)) ->
+                 let generalized = g@generalized in
+                 let r = repr ~generalized t in
+                 x, (List.rev (List.map (fun (i,c) -> uvar_name ~generalized i c) g),r))
                r, row)
   in
     repr ~generalized t
