@@ -39,6 +39,7 @@ correct('def f(r) = ignore (r.a); ignore (r.b) end ignore (f)');
 correct('def f(r) = [r with a = 5] end ignore(f([b=2]))');
 correct('r = [a=0] def r.b = 5 end ignore (r.a)');
 correct('r = [f = fun (r) -> ignore (r.a)] ignore (r.f([a=5,b=2])) ignore(r.f([a=3]))');
+correct('r = [f = fun (x) -> x] ignore(r.f(3)) ignore(r.f("x"))');;
 
 section("BASIC");
 incorrect('[1]==["1"]');
