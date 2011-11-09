@@ -29,7 +29,6 @@ sub correct {
 
 # TODO: move this at the end
 section("RECORDS");
-correct('r = [f = fun (r) -> ignore (r.a)] ignore (r.f([a=5,b=2])) ignore(r.f([a=3]))');
 correct('ignore([a=4,b=5].a)');
 incorrect('ignore([a=4,b=5].c)');
 correct('def f(x) = x.a end ignore(f([a=4,b=5]))');
@@ -39,6 +38,7 @@ correct('r = [a=[b=0]] def r.a.t = 5. end ignore (r)');
 correct('def f(r) = ignore (r.a); ignore (r.b) end ignore (f)');
 correct('def f(r) = [r with a = 5] end ignore(f([b=2]))');
 correct('r = [a=0] def r.b = 5 end ignore (r.a)');
+correct('r = [f = fun (r) -> ignore (r.a)] ignore (r.f([a=5,b=2])) ignore(r.f([a=3]))');
 
 section("BASIC");
 incorrect('[1]==["1"]');

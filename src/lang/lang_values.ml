@@ -902,12 +902,17 @@ let rec eval ~env tm =
       | Product (a,b) -> mk (V.Product (eval ~env a, eval ~env b))
       | Record r -> mk (V.Record (List.map (fun (x,v) -> x, eval ~env v) r))
       | Field (r,x) ->
-        begin match (eval ~env r).V.value with
-          | V.Record r ->
-            let v = List.assoc x r in
-            { v with V.t = tm.t }
+        let v =
+          match (eval ~env r).V.value with
+            | V.Record r -> List.assoc x r
           | _ -> assert false
-        end
+        in
+        let g,t =
+          match (T.deref r.t).T.descr with
+            | T.Record r -> List.assoc x (fst r)
+            | _ -> assert false
+        in
+        instantiate ~generalized:g v
       | Replace_field (r,x,v) ->
         let r = eval ~env r in
         let r =
