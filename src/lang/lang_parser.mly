@@ -48,6 +48,13 @@
     let fv = Lang_values.free_vars ~bound body in
       mk ?pos (Fun (fv,args,body))
 
+  let deep_field (e,xx) =
+    let rec aux e = function
+      | [] -> e
+      | x::xx -> aux (mk (Field (e, x))) xx
+    in
+    aux (mk (Var e)) xx
+
   let rec replace_fields e = function
     | [] -> e
     | (x,v)::xx -> mk (Replace_field (replace_fields e xx, x, v))
@@ -58,6 +65,7 @@
       | x::xx ->
         (* The function is used here not to have the same physical e used
            twice... Can you think of something nicer? *)
+        (* (fun (#) -> [# with x = v]) r *)
         let en = "#" in
         let ex = mk (Field (mk (Var en),x)) in
         let f = mk (Replace_field(mk (Var en), x, replace_deep_field ex xx v)) in
@@ -163,6 +171,7 @@
 %token <string> VARLPAR
 %token <string> VARLBRA
 %token <string> STRING
+%token <string * string list> RECORD_FIELD RECORD_FIELD_LPAR
 %token <int> INT
 %token <float> FLOAT
 %token <bool> BOOL
@@ -290,6 +299,7 @@ expr:
   | list                             { mk (List $1) }
   | record                           { mk (Record $1) }
   | expr FIELD VAR                   { mk (Field ($1, $3)) }
+  | RECORD_FIELD                     { deep_field $1 }
   | LBRA expr WITH inner_record RBRA { replace_fields $2 $4 }
   | REF expr                         { mk (Ref $2) }
   | GET expr                         { mk (Get $2) }
@@ -308,6 +318,7 @@ expr:
   | LPAR expr COMMA expr RPAR        { mk (Product ($2,$4)) }
   | VAR                              { mk (Var $1) }
   | VARLPAR app_list RPAR            { mk (App (mk ~pos:(1,1) (Var $1),$2)) }
+  | RECORD_FIELD_LPAR app_list RPAR  { mk (App (deep_field $1,$2)) }
   | expr FIELD VARLPAR app_list RPAR { mk (App (mk (Field ($1, $3)), $4)) }
   | VARLBRA expr RBRA                { mk (App (mk ~pos:(1,1) (Var "_[_]"),
                                            ["",$2;
@@ -378,6 +389,7 @@ cexpr:
   | list                             { mk (List $1) }
   | record                           { mk (Record $1) }
   | cexpr FIELD VAR                  { mk (Field ($1, $3)) }
+  | RECORD_FIELD                     { deep_field $1 }
   | LBRA expr WITH inner_record RBRA { replace_fields $2 $4 }
   | REF expr                         { mk (Ref $2) }
   | GET expr                         { mk (Get $2) }
@@ -396,6 +408,7 @@ cexpr:
   | LPAR expr COMMA expr RPAR        { mk (Product ($2,$4)) }
   | VAR                              { mk (Var $1) }
   | VARLPAR app_list RPAR            { mk (App (mk ~pos:(1,1) (Var $1),$2)) }
+  | RECORD_FIELD_LPAR app_list RPAR  { mk (App (deep_field $1,$2)) }
   | cexpr FIELD VARLPAR app_list RPAR { mk (App (mk (Field ($1, $3)), $4)) }
   | VARLBRA expr RBRA                { mk (App (mk ~pos:(1,1) (Var "_[_]"),
                                            ["",$2;
@@ -458,9 +471,13 @@ binding:
   | VAR GETS expr {
       (Doc.none (),[]),$1,$3
     }
-  | DEF VAR fields g exprs END {
-      let body = replace_deep_field (mk (Var $2)) $3 $5 in
-        $1,$2,body
+  | DEF VAR g exprs END {
+      $1,$2,$4
+  }
+  | DEF RECORD_FIELD g exprs END {
+      let e, xx = $2 in
+      let body = replace_deep_field (mk (Var e)) xx $4 in
+        $1,e,body
     }
   | DEF var_fields_par arglist RPAR g exprs END {
       let var, fields = $2 in
@@ -475,6 +492,7 @@ fields:
 var_fields_par:
   | VARLPAR { $1,[] }
   | VAR fields_par { $1,$2 }
+  | RECORD_FIELD_LPAR { $1 }
 fields_par:
   | FIELD VARLPAR { [$2] }
   | FIELD VAR fields_par { $2::$3 }

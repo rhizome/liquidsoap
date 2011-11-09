@@ -26,106 +26,56 @@
 (** A pre-processor which evaluates %ifdefs. *)
 let preprocess tokenizer =
   let state = ref 0 in
-  let var = ref None in
-  let last_dot = ref true in
   let rec token lexbuf =
-    let var_done () =
-      last_dot := false;
-      let var =
-        let v =
-          match !var with
-            | Some var -> var
-            | None -> assert false
-        in
-        var := None;
-        List.rev v
-      in
-      let v,xx = List.hd var, List.tl var in
-      let rec skip () =
-        match tokenizer lexbuf with
-          | Lang_parser.PP_ENDIF -> ()
-          | _ -> skip ()
+    let rec skip () =
+      match tokenizer lexbuf with
+        | Lang_parser.PP_ENDIF -> token lexbuf
+        | _ -> skip ()
+    in
+    let handle_ifdef (r,xx) =
+      let rec has_field r = function
+        | [] -> true
+        | x::xx ->
+          (
+            match r.Lang_values.V.value with
+              | Lang_values.V.Record r ->
+                (
+                  try
+                    let r = List.assoc x r in
+                    has_field r xx
+                  with
+                    | Not_found -> false
+                )
+              | _ -> xx = []
+          )
       in
       (** XXX Less natural meaning than the original one. *)
-      let v = Lang_values.builtins#get v in
-      match v with
-        | Some r ->
+      if Lang_values.builtins#is_registered r then
+        let r = Utils.get_some (Lang_values.builtins#get r) in
+        if has_field (snd r) xx then
           (
-            let rec aux r = function
-              | [] -> incr state
-              | x::xx ->
-                (
-                  match r.Lang_values.V.value with
-                    | Lang_values.V.Record r ->
-                      (
-                        try
-                          let r = List.assoc x r in
-                          aux r xx
-                        with
-                          | Not_found -> skip ()
-                      )
-                    | _ -> skip ()
-                )
-            in
-            aux (snd r) xx
+            incr state ;
+            token lexbuf
           )
-        | None -> skip ()
+        else
+          skip ()
+      else
+        skip ()
     in
     match tokenizer lexbuf with
       | Lang_parser.PP_IFDEF ->
-        last_dot := false;
-        var := Some [];
-        token lexbuf
+          begin match tokenizer lexbuf with
+            | Lang_parser.VAR v -> handle_ifdef (v,[])
+            | Lang_parser.RECORD_FIELD rf -> handle_ifdef rf
+            | _ -> failwith "expected a variable after %ifdef"
+          end
       | Lang_parser.PP_ENDIF ->
-        if !state=0 then failwith "no %ifdef to end here" ;
-        decr state ;
-        last_dot := false;
-        var := None ;
-        token lexbuf
-      | Lang_parser.FIELD as x ->
-        (
-          match !var with
-            | None ->
-              last_dot := false;
-              x
-            | Some var ->
-              if var = [] then failwith "%ifdef variable should not begin with a dot";
-              last_dot := true;
-              token lexbuf
-        )
-      | (Lang_parser.VAR v) as x ->
-        let x =
-          match !var with
-            | None -> x
-            | Some [] ->
-              var := Some [v];
-              last_dot := false;
-              token lexbuf
-            | Some vv ->
-              if !last_dot then
-                (
-                  var := Some (v::vv);
-                  last_dot := false;
-                  token lexbuf
-                )
-              else
-                (
-                  var_done ();
-                  x
-                )
-        in
-        x
-      | x ->
-        last_dot := false;
-        (
-          match !var with
-            | None -> ()
-            | Some [] -> failwith "expected a variable after %ifdef"
-            | Some _ -> var_done ()
-        );
-        x
+          if !state=0 then failwith "no %ifdef to end here" ;
+          decr state ;
+          token lexbuf
+      | x -> x
   in
-  token
+    token
 
 (** Expand %include statements by inserting the content of files.
   * Filenames are understood relatively to the current directory,
@@ -382,12 +332,22 @@ let strip_newlines tokenizer =
             | Lang_parser.VAR _ as v ->
                 state := Some v ;
                 token lexbuf
+            | Lang_parser.RECORD_FIELD _ as rf ->
+                state := Some rf ;
+                token lexbuf
             | x -> x
           end
       | Some (Lang_parser.VAR var as v) ->
           begin match tokenizer lexbuf with
             | Lang_parser.LPAR -> state := None ; Lang_parser.VARLPAR var
             | Lang_parser.LBRA -> state := None ; Lang_parser.VARLBRA var
+            | Lang_parser.PP_ENDL -> state := None ; v
+            | x -> state := Some x ; v
+          end
+      | Some (Lang_parser.RECORD_FIELD var as v) ->
+          begin match tokenizer lexbuf with
+            | Lang_parser.LPAR -> state := None ; Lang_parser.RECORD_FIELD_LPAR var
+            | Lang_parser.LBRA -> state := None ; Lang_parser.RECORD_FIELD_LPAR var
             | Lang_parser.PP_ENDL -> state := None ; v
             | x -> state := Some x ; v
           end

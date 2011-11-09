@@ -79,6 +79,7 @@
   let process_string s = process_string (String.copy s)
 }
 
+let digit = ['0'-'9']
 let decimal_literal =
   ['0'-'9'] ['0'-'9' '_']*
 let hex_literal =
@@ -90,17 +91,17 @@ let bin_literal =
 let int_literal =
   decimal_literal | hex_literal | oct_literal | bin_literal
 
-let var =
-  ['A'-'Z' 'a'-'z' '_' '\192'-'\214' '\216'-'\246' '\248'-'\255' ]
-  ['A'-'Z' 'a'-'z' '_'
-     '\192'-'\214' '\216'-'\246' '\248'-'\255' '\'' '0'-'9']*
+let utf8_letter = ['A'-'Z' 'a'-'z' '_' '\192'-'\214' '\216'-'\246' '\248'-'\255' ]
+
+let var = utf8_letter (utf8_letter|digit|'\'')*
+let record_field = utf8_letter (utf8_letter|digit|'\''|'.')*
 
 let time =
-    ( (['0'-'9']+ 'w')? (['0'-'9']+ 'h') (['0'-'9']+))
-  | ( (['0'-'9']+ 'w') (['0'-'9']+ 'h')? (['0'-'9']+ 'm')? (['0'-'9']+ 's')?)
-  | ( (['0'-'9']+ 'w')? (['0'-'9']+ 'h') (['0'-'9']+ 'm')? (['0'-'9']+ 's')?)
-  | ( (['0'-'9']+ 'w')? (['0'-'9']+ 'h')? (['0'-'9']+ 'm') (['0'-'9']+ 's')?)
-  | ( (['0'-'9']+ 'w')? (['0'-'9']+ 'h')? (['0'-'9']+ 'm')? (['0'-'9']+ 's'))
+    ( (digit+ 'w')? (digit+ 'h') (digit+))
+  | ( (digit+ 'w') (digit+ 'h')? (digit+ 'm')? (digit+ 's')?)
+  | ( (digit+ 'w')? (digit+ 'h') (digit+ 'm')? (digit+ 's')?)
+  | ( (digit+ 'w')? (digit+ 'h')? (digit+ 'm') (digit+ 's')?)
+  | ( (digit+ 'w')? (digit+ 'h')? (digit+ 'm')? (digit+ 's'))
 
 rule token = parse
   | [' ' '\t' '\r']    { token lexbuf }
@@ -179,7 +180,7 @@ rule token = parse
   | "true"  { BOOL true }
   | "false" { BOOL false }
   | int_literal { INT (int_of_string (Lexing.lexeme lexbuf)) }
-  | (['0'-'9']* as ipart) '.' (['0'-'9']* as fpart)
+  | (digit* as ipart) '.' (digit* as fpart)
       { let fpart =
           if fpart = "" then 0. else
             (float_of_string fpart) /.
@@ -193,6 +194,7 @@ rule token = parse
                                { INTERVAL (parse_time t1, parse_time t2) }
 
   | var as v                   { VAR v }
+  | record_field as rf         { let rf = Pcre.split ~pat:"\\." rf in RECORD_FIELD (List.hd rf, List.tl rf) }
 
   | '\'' (([^'\''] | '\\' '\'')* as s) '\''   {
             String.iter (fun c -> if c = '\n' then incrline lexbuf) s ;

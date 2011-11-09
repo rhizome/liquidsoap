@@ -1,4 +1,4 @@
-%ifdef video.add_text.gd
+%ifdef video.gd.add_text
 # Add a scrolling line of text on video frames.
 # @category Source / Video Processing
 # @param ~id       Force the value of the source ID.
@@ -21,7 +21,7 @@ def video.add_text(~id="",~color=16777215,~cycle=true,
 end
 %endif
 
-%ifdef video.add_text.sdl
+%ifdef video.sdl.add_text
 # Add a scrolling line of text on video frames.
 # @category Source / Video Processing
 # @param ~id       Force the value of the source ID.
@@ -39,7 +39,7 @@ def video.add_text(~id="",~color=16777215,~cycle=true,
                    ~font=configure.default_font,
                    ~metadata="",~size=18,~speed=70,~x=-1,~y=-5,
                    text,source)
-  video.add_text.sdl(id=id,color=color,cycle=cycle,font=font,metadata=metadata,
+  video.sdl.add_text(id=id,color=color,cycle=cycle,font=font,metadata=metadata,
                      size=size,speed=speed,x=x,y=y,text,source)
 end
 %endif

@@ -970,7 +970,7 @@ let filter_vars f t =
                   | EVar ic -> ic
                   | _ -> assert false
               in
-              if not (List.mem row l) then row::l else l
+              if not (List.mem row generalized) && not (List.mem row l) then row::l else l
             in
             aux l row
           | None -> l

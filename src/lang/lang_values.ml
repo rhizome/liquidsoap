@@ -513,44 +513,35 @@ end
 
 (** {1 Built-in values and toplevel definitions} *)
 
-let builtins : (((int*T.constraints) list) * V.value) Plug.plug =
+let builtins : (T.cvar list * V.value) Plug.plug =
   (* This function is used to merge the new value with the old record. *)
   let split_name r x (c,v) =
     let rec aux r x =
       match x with
-        | [] -> v
+        | [] -> c,v
         | x::xx ->
-          let tr, r =
+          let cr, tr, r =
             match r with
-              | Some ({ V.value = V.Record r } as vr) ->
-                let tr =
+              | Some (cr, ({ V.value = V.Record r } as vr)) ->
+                let cr, tr =
                   match (T.deref vr.V.t).T.descr with
-                    | T.Record tr ->
-                      (* TODO: is it ok to drop row variables here? *)
-                      fst (T.merge_record tr)
+                    | T.Record tr -> cr, fst (T.merge_record tr)
                     | _ -> assert false
                 in
-                tr, r
-              | _ -> [], []
+                cr, tr, r
+              | _ -> [], [], []
           in
-          let rx = try List.assoc x r with Not_found -> V.empty_record () in
-          let rx = aux (Some rx) xx in
+          let cx,rx = try fst (List.assoc x tr), List.assoc x r with Not_found -> [], V.empty_record () in
+          let cx,rx = aux (Some (cx,rx)) xx in
           let r = Utils.remove_assoc x r in
           let r = (x,rx)::r in
           let r = V.Record r in
           let tr = Utils.remove_assoc x tr in
-          let tr = (x,(T.generalize rx.V.t))::tr in
+          let tr = (x,(cx,rx.V.t))::tr in
           let tr = record_t ~row:false tr in
-          { V.t = tr; value = r }
+          cr, { V.t = tr; value = r }
     in
-    let cr,r =
-      match r with
-        | Some (cr,r) -> cr,Some r
-        | None -> [], None
-    in
-    (* TODO: should we rename type scheme variables to ensure that there is no
-       conflict?... *)
-    (c@cr), aux r x
+    aux r x
   in
   Plug.create ~split_name ~doc:"scripting values" "scripting values"
 
@@ -660,7 +651,7 @@ let rec check ?(print_toplevel=false) ~level ~env e =
         | _ -> assert false
     in
     let rt = Utils.remove_assoc x rt in
-    let rt = (x,(T.generalize v.t))::rt in
+    let rt = (x,T.generalize v.t)::rt in
     let rt = mk (T.Record (rt, row)) in
     e.t >: rt
   | Product (a,b) ->

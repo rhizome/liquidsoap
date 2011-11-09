@@ -1,4 +1,7 @@
 %ifdef input.lastfm
+lastfm = record.empty
+librefm = record.empty
+
 # Utility to compose last.fm URIs.
 # @category String
 # @param ~user      Lastfm user
@@ -60,7 +63,7 @@ end
 # @param ~length Try to submit length information. This operation can be CPU intensive. Value forced to true when used with the "user" source type.
 # @param ~delay Submit song when there is only this delay left, in seconds. 
 # @param ~force If remaining time is null, the song will be assumed to be skipped or cuted, and not submitted. Set to zero to disable this behaviour.
-def audioscrobbler.submit.full(
+def audioscrobbler.submit_full(
      ~user,~password,
      ~host="post.audioscrobbler.com",~port=80,
      ~source="broadcast",~length=false,
@@ -92,11 +95,11 @@ end
 # @param ~length Try to submit length information. This operation can be CPU intensive. Value forced to true when used with the "user" source type.
 # @param ~delay Submit song when there is only this delay left, in seconds. If remaining time is less than this value, the song will be assumed to be skipped or cuted, and not submitted. Set to zero to disable this behaviour.
 # @param ~force If remaining time is null, the song will be assumed to be skipped or cuted, and not submitted. Set to zero to disable this behaviour.
-def librefm.submit.full(
+def librefm.submit_full(
      ~user,~password,
      ~source="broadcast",~length=false,
      ~delay=10.,~force=false,s) =
-    audioscrobbler.submit.full(
+    audioscrobbler.submit_full(
       user=user,password=password,
       source=source,length=length,
       host="turtle.libre.fm",port=80,
@@ -111,11 +114,11 @@ end
 # @param ~length Try to submit length information. This operation can be CPU intensive. Value forced to true when used with the "user" source type.
 # @param ~delay Submit song when there is only this delay left, in seconds. If remaining time is less than this value, the song will be assumed to be skipped or cuted, and not submitted. Set to zero to disable this behaviour.
 # @param ~force If remaining time is null, the song will be assumed to be skipped or cuted, and not submitted. Set to zero to disable this behaviour.
-def lastfm.submit.full(
+def lastfm.submit_full(
      ~user,~password,
      ~source="broadcast",~length=false,
      ~delay=10.,~force=false,s) =
-    audioscrobbler.submit.full(
+    audioscrobbler.submit_full(
       user=user,password=password,
       source=source,length=length,
       host="post.audioscrobbler.com",port=80,
