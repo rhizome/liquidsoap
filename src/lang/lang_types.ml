@@ -173,7 +173,7 @@ let make ?(pos=None) ?(level=(-1)) d =
 let dummy = make ~pos:None (EVar (-1,[]))
 
 let is_evar t =
-  match t.descr with
+  match (* TODO deref? *) t.descr with
     | EVar _ -> true
     | _ -> false
 
@@ -790,75 +790,72 @@ let rec (<:) a b =
                                        row     = Utils.may repr r2.row}))
           with
             | Not_found ->
-              match r1.row with
-                | None ->
-                  (* No row type, sorry. *)
-                  let rec1 = 
-                    Fields.mapi 
-                      (fun x' (g1,t1) -> 
-                        if x' = x then 
-                          repr ~generalized:g1 t1 
-                        else 
-                          `Ellipsis) r1.fields 
-                  in
-                  let rec2 =
-                    (* Handles both records and non-records *)
-                    let fo = ref false in
-                    let filter_out _ = !fo || (fo := true; false) in
-                    repr ~filter_out (deref b)
-                  in
-                  (* TODO: correctly display the generalized variables *)
-                  let rec1 = 
-                    Fields.map (fun r -> ([],r)) rec1 
-                  in
-                  raise (Error (`Record { fields = rec1;
-                                          row    = Utils.may repr r1.row}, 
-                                rec2))
-                | Some row1 ->
-                  (* We have a row type, add a field to it. *)
-                  if is_evar row1 then
-                    (
-                      let fresh = 
-                        record ~level:row1.level 
-                               ~row:true
-                               Fields.empty 
+                match r1.row with
+                  | None ->
+                      (* No row type, sorry. *)
+                      let rec1 = 
+                        Fields.mapi 
+                          (fun x' (g1,t1) -> 
+                            if x' = x then 
+                              repr ~generalized:g1 t1 
+                            else 
+                              `Ellipsis) r1.fields 
                       in
-                      row1.descr <- Link fresh
-                    );
-                  let t, r =
-                    match row1.descr with
-                      | Link ({ descr = Record r } as t) -> t, r
-                      | _ -> assert false
-                  in
-                  let fields = Fields.add x (g2,t2) r.fields in
-                  let t = { t with descr = Record { fields = fields; 
-                                                    row    = r.row} } 
-                  in
-                  row1.descr <- Link t
-        ) r2.fields;
-        (* Then we unify the row variables. *)
-        let r1 = merge_record r1 in
-        (
-          match r1.row, r2.row with
-            | None, None -> ()
-            | None, Some row2 ->
+                      let rec2 =
+                        (* Handles both records and non-records *)
+                        let fo = ref false in
+                        let filter_out _ = !fo || (fo := true; false) in
+                        repr ~filter_out (deref b)
+                      in
+                      (* TODO: correctly display the generalized variables *)
+                      let rec1 = 
+                        Fields.map (fun r -> ([],r)) rec1 
+                      in
+                      raise (Error (`Record { fields = rec1;
+                                              row    = Utils.may repr r1.row}, 
+                                    rec2))
+                  | Some row1 ->
+                      (* We have a row type, add a field to it. *)
+                      if is_evar row1 then begin
+                        let fresh = 
+                          record ~level:row1.level ~row:true Fields.empty 
+                        in
+                          (* TODO avoid manual Link update *)
+                          row1.descr <- Link fresh
+                      end ;
+                      let t, r =
+                        match row1.descr with
+                          | Link ({ descr = Record r } as t) -> t, r
+                          | _ -> assert false
+                      in
+                      let fields = Fields.add x (g2,t2) r.fields in
+                      let t = { t with descr = Record { fields = fields; 
+                                                        row    = r.row } } 
+                      in
+                      row1.descr <- Link t)
+        r2.fields ;
+      (* Then we unify the row variables. *)
+      let r1 = merge_record r1 in
+        begin match r1.row, r2.row with
+          | None, None -> ()
+          | None, Some row2 ->
               let rec1 = 
                 Fields.filter 
                   (fun x _ -> not (Fields.mem x r2.fields)) 
                   r1.fields 
               in
               row2.descr <- Link (make ~level:row2.level 
-                                      (Record { fields = rec1;
-                                                row    = None }))
-            | Some row1, None -> ()
-            | Some row1, Some row2 ->
+                                    (Record { fields = rec1;
+                                              row    = None }))
+          | Some row1, None -> ()
+          | Some row1, Some row2 ->
               (* Occurs-check *)
               if row1 <> row2 then
                 (* Unify *)
                 row1.descr <- Link (make ~level:row1.level 
-                                        (Record { fields = Fields.empty;
-                                                  row    = Some row2}))
-        )
+                                      (Record { fields = Fields.empty;
+                                                row    = Some row2}))
+        end
     | Zero, Zero -> ()
     | Zero, Variable -> ()
     | Succ t1, Succ t2 ->

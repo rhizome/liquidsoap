@@ -232,6 +232,8 @@ let product a b = mk (product_t a.t b.t) (Product (a,b))
 let list ~t l = mk (list_t t) (List l)
 
 let record ?t f =
+  (* TODO Value restriction for generalization. Is x.t.level meaningful?
+   *  And test this! *)
   let lt = T.Fields.map (fun x -> T.generalize x.t) f in
   mk (record_t ?t lt) (Record f)
 

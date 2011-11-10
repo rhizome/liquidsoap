@@ -632,45 +632,48 @@ let rec check ?(print_toplevel=false) ~level ~env e =
         e.t >: mk (T.List v) ;
         List.iter (fun item -> item.t <: v) l
   | Record r ->
-    T.Fields.iter (fun  _ tm -> check ~level ~env tm) r ;
-    let tr = T.Fields.map (fun _ -> T.fresh_evar ~level ~pos) r in
-    T.Fields.iter (fun x item -> item.t <: T.Fields.find x tr) r;
-    let tr = T.Fields.map T.generalize tr in
-    e.t >: record_t ~row:false tr
+      (* TODO
+       *   - need value restriction before generalization
+       *   - could do everything in one T.Fields.map pass      *)
+      T.Fields.iter (fun  _ tm -> check ~level ~env tm) r ;
+      let tr = T.Fields.map (fun _ -> T.fresh_evar ~level ~pos) r in
+      T.Fields.iter (fun x item -> item.t <: T.Fields.find x tr) r;
+      let tr = T.Fields.map T.generalize tr in
+      e.t >: record_t ~row:false tr
   | Field (r,x) ->
-    check ~level ~env r ;
-    let v = T.fresh_evar ~level ~pos in
-    let fields = 
-      T.Fields.add x ([],v) T.Fields.empty 
-    in
-    r.t <: record_t ~row:true fields;
-    let g =
-      match (T.deref r.t).T.descr with
-        | T.Record r ->
-          (* TODO: handle Not_found *)
-          fst (T.Fields.find x r.T.fields)
-        | _ -> assert false
-    in
-    let v = T.instantiate ~level ~generalized:g v in
-    e.t >: v
+      check ~level ~env r ;
+      let v = T.fresh_evar ~level ~pos in
+      let fields = 
+        T.Fields.add x ([],v) T.Fields.empty 
+      in
+      r.t <: record_t ~row:true fields;
+      let g =
+        match (T.deref r.t).T.descr with
+          | T.Record r ->
+            (* TODO: handle Not_found *)
+            fst (T.Fields.find x r.T.fields)
+          | _ -> assert false
+      in
+      let v = T.instantiate ~level ~generalized:g v in
+      e.t >: v
   | Replace_field (r,x,v) ->
-    check ~level ~env v;
-    check ~level ~env r;
-    r.t <: record_t ~row:true T.Fields.empty;
-    let rt = r.t in
-    let r =
-      match (T.deref rt).T.descr with
-        | T.Record r -> T.merge_record r
-        | _ -> assert false
-    in
-    let fields = T.Fields.remove x r.T.fields in
-    let fields = 
-      T.Fields.add x (T.generalize v.t) fields 
-    in
-    let rt = mk (T.Record {T.fields = fields;
-                             row    = r.T.row}) 
-    in
-    e.t >: rt
+      check ~level ~env v;
+      check ~level ~env r;
+      r.t <: record_t ~row:true T.Fields.empty;
+      let rt = r.t in
+      let r =
+        match (T.deref rt).T.descr with
+          | T.Record r -> T.merge_record r
+          | _ -> assert false
+      in
+      let fields = T.Fields.remove x r.T.fields in
+      let fields = 
+        T.Fields.add x (T.generalize v.t) fields 
+      in
+      let rt = mk (T.Record {T.fields = fields;
+                               row    = r.T.row}) 
+      in
+      e.t >: rt
   | Product (a,b) ->
       check ~level ~env a ; check ~level ~env b ;
       e.t >: mk (T.Product (a.t,b.t))
