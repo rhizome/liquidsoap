@@ -172,11 +172,6 @@ let make ?(pos=None) ?(level=(-1)) d =
 
 let dummy = make ~pos:None (EVar (-1,[]))
 
-let is_evar t =
-  match (* TODO deref? *) t.descr with
-    | EVar _ -> true
-    | _ -> false
-
 (** Merge a record with other records its row variables are pointing to. *)
 let rec merge_record r =
   match r.fields,r.row with
@@ -199,6 +194,11 @@ let rec deref t = match t.descr with
   | Link x -> deref x
   | Record r -> { t with descr = Record (merge_record r) }
   | _ -> t
+
+let is_evar t =
+  match (deref t).descr with
+    | EVar _ -> true
+    | _ -> false
 
 (** Given a strictly positive integer, generate a name in [a-z]+:
     * a, b, ... z, aa, ab, ... az, ba, ... *)
@@ -244,8 +244,6 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
               Hashtbl.add evars i name ;
               name
         in
-        (* TODO: for debugging, remove this *)
-        let s = Printf.sprintf "%s(%d)" s i in
           `EVar (Printf.sprintf "?%s%s" constr_symbols s, c)
   in
   let rec repr ~generalized t =
