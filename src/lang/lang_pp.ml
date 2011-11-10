@@ -41,7 +41,7 @@ let preprocess tokenizer =
               | Lang_values.V.Record r ->
                 (
                   try
-                    let r = List.assoc x r in
+                    let r = Lang_types.Fields.find x r in
                     has_field r xx
                   with
                     | Not_found -> false

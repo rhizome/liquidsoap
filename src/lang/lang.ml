@@ -48,9 +48,11 @@ let of_list_t t = match (T.deref t).T.descr with
   | T.List t -> t
   | _ -> assert false
 
-let record_t ?t l = T.make (T.Record (l,t))
+let record_t ?t f = 
+  T.make (T.Record {T.fields = f;
+                      row    = t})
 let of_record_t t = match (T.deref t).T.descr with
-  | T.Record (l,r) -> l,r
+  | T.Record r -> r
   | _ -> assert false
 
 let metadata_t = list_t (product_t string_t string_t)
@@ -229,9 +231,9 @@ let product a b = mk (product_t a.t b.t) (Product (a,b))
 
 let list ~t l = mk (list_t t) (List l)
 
-let record ?t l =
-  let lt = List.map (fun (x,y) -> x,T.generalize y.t) l in
-  mk (record_t ?t lt) (Record l)
+let record ?t f =
+  let lt = T.Fields.map (fun x -> T.generalize x.t) f in
+  mk (record_t ?t lt) (Record f)
 
 let source s =
   mk (source_t (kind_type_of_frame_kind s#kind)) (Source s)
@@ -426,7 +428,8 @@ let iter_sources f v =
     | Term.Unit | Term.Bool _ | Term.String _
     | Term.Int _ | Term.Float _ | Term.Encoder _ -> ()
     | Term.List l -> List.iter (iter_term env) l
-    | Term.Record r -> List.iter (fun (_,a) -> iter_term env a) r
+    | Term.Record r -> 
+        T.Fields.iter (fun _ a -> iter_term env a) r
     | Term.Field (r,_) -> iter_term env r
     | Term.Replace_field (r,x,v) ->
       (* TODO: iter on r too *)
@@ -452,7 +455,8 @@ let iter_sources f v =
     | Source s -> f s
     | Unit | Bool _ | Int _ | Float _ | String _ | Request _ | Encoder _ -> ()
     | List l -> List.iter iter_value l
-    | Record r -> List.iter (fun (_,a) -> iter_value a) r
+    | Record r -> 
+        T.Fields.iter (fun _ a -> iter_value a) r
     | Ref a -> iter_value !a
     | Product (a,b) ->
         iter_value a ; iter_value b

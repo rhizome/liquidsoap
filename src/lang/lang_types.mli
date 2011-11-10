@@ -33,6 +33,12 @@ type constr = Num | Ord | Getter of ground | Dtools | Arity_fixed | Arity_any
 type constraints = constr list
 val print_constr : constr -> string
 
+module Fields : Map.S with type key = string
+type ('a,'b) record = {
+  fields : 'a Fields.t;
+  row    : 'b option }
+val list_of_fields : 'a Fields.t -> (string*'a) list
+
 type t = { pos : pos option; mutable level : int; mutable descr : descr; }
 and constructed = { name : string ; params : (variance*t) list }
 and descr =
@@ -44,12 +50,11 @@ and descr =
   | Arrow of (bool * string * t) list * t
   | EVar of (int * constraints)
   | Link of t
-  | Record of record
-and record = (string * scheme) list * t option
+  | Record of (scheme, t) record
 and cvar = int * constraints
 and scheme = cvar list * t
 
-val merge_record : record -> record
+val merge_record : (scheme, t) record -> (scheme, t) record
 
 val make : ?pos:pos option -> ?level:int -> descr -> t
 val dummy : t
@@ -80,4 +85,4 @@ val ( >: ) : t -> t -> unit
 
 val fresh : constraints:constraints -> level:int -> pos:pos option -> t
 val fresh_evar : level:int -> pos:pos option -> t
-val record : ?level:int -> row:bool -> (string * scheme) list -> t
+val record : ?level:int -> row:bool -> scheme Fields.t -> t

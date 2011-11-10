@@ -59,6 +59,9 @@
     | [] -> e
     | (x,v)::xx -> mk (Replace_field (replace_fields e xx, x, v))
 
+  let replace_fields x r = 
+    replace_fields x (T.list_of_fields r) 
+
   let rec replace_deep_field e xx v =
     match xx with
       | [] -> v
@@ -453,8 +456,8 @@ record:
     /* TODO: check that we don't have the same label defined twice! */
   | LBRA inner_record RBRA { $2 }
 inner_record:
-  | VAR GETS expr COMMA inner_record { ($1,$3)::$5 }
-  | VAR GETS expr { [$1,$3] }
+  | VAR GETS expr COMMA inner_record { Lang_types.Fields.add $1 $3 $5 }
+  | VAR GETS expr { Lang_types.Fields.add $1 $3 Lang_types.Fields.empty }
 
 
 app_list_elem:

@@ -40,7 +40,7 @@ and in_value =
   | Request of Request.t
   | Encoder of Encoder.format
   | List    of value list
-  | Record  of (string * value) list
+  | Record  of value Lang_types.Fields.t
   | Product of value * value
   | Ref     of value ref
   | Fun     of (string * string * value option) list *
@@ -150,7 +150,7 @@ val add_operator :
 
 val to_unit : value -> unit
 val to_bool : value -> bool
-val to_record : value -> (string*value) list
+val to_record : value -> value Lang_types.Fields.t
 val to_string : value -> string
 val to_string_getter : value -> unit -> string
 val to_float : value -> float
@@ -176,8 +176,8 @@ val float_t  : t
 val bool_t   : t
 val string_t : t
 
-val record_t    : ?t:t -> (string*Lang_types.scheme) list -> t
-val of_record_t : t -> (string*Lang_types.scheme) list * t option
+val record_t    : ?t:t -> Lang_types.scheme Lang_types.Fields.t -> t
+val of_record_t : t -> (Lang_types.scheme, t) Lang_types.record
 
 val product_t    : t -> t -> t
 val of_product_t : t -> t * t
@@ -227,7 +227,7 @@ val unit : value
 val int : int -> value
 val bool : bool -> value
 val float : float -> value
-val record : ?t:t -> (string*value) list -> value
+val record : ?t:t -> value Lang_types.Fields.t -> value
 val string : string -> value
 val list : t:t -> value list -> value
 val source : Source.source -> value
