@@ -721,7 +721,7 @@ let constr_sub x y =
     | _ -> false
 
 (** Ensure that a<:b, perform unification if needed.
-  * In case of error, generate an explaination. *)
+  * In case of error, generate an explanation. *)
 let rec (<:) a b =
   if debug then Printf.eprintf "%s <: %s\n%!" (print a) (print b) ;
   match (deref a).descr, (deref b).descr with
@@ -763,6 +763,7 @@ let rec (<:) a b =
         (fun x (g2,t2) ->
           try
             let t1 = snd (Fields.find x r1.fields) in
+            (* TODO t2 doesn't make sense without g2 *)
             try t1 <: t2 with
               | Error (a,b) ->
                 (* TODO: correctly display the generalized variables *)
