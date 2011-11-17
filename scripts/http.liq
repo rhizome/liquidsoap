@@ -5,14 +5,15 @@
 # Create a HTTP response callback when a data callback is provided.
 # @category Interaction
 # @param response Record containing all required informations.
-def http_response(response) =
+def http.response(response) =
   code        = ?(response.code=200)
   headers     = ?(response.headers=[])
   protocol    = ?(response.protocol="HTTP/1.0")
   static_data = ?(response.data.static="")
   stream_data = ?(response.data.stream={""})  
 
-  status = http_codes[string_of(code)]
+  codes  = http.codes
+  status = codes[string_of(code)]
   headers = 
     if not response.data.stream? then
       list.append([("Content-Length",

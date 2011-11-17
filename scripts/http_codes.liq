@@ -2,7 +2,7 @@
 
 # List of HTTP response codes and statuses.
 # @category Interaction
-def http_codes = [
+def http.codes = [
 ("100","Continue"),
 #This means that the server has received the request headers, and that the client
 #should proceed to send the request body (in the case of a request for which a
