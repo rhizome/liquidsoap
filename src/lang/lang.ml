@@ -48,9 +48,10 @@ let of_list_t t = match (T.deref t).T.descr with
   | T.List t -> t
   | _ -> assert false
 
-let record_t ?t f = 
-  T.make (T.Record {T.fields = f;
-                      row    = t})
+let record_t ?row ?opt_row f =
+  T.make (T.Record {T.fields  = f;
+                      row     = row;
+                      opt_row = opt_row})
 let of_record_t t = match (T.deref t).T.descr with
   | T.Record r -> r
   | _ -> assert false
@@ -231,11 +232,11 @@ let product a b = mk (product_t a.t b.t) (Product (a,b))
 
 let list ~t l = mk (list_t t) (List l)
 
-let record ?t f =
+let record ?row ?opt_row f =
   (* TODO Value restriction for generalization. Is x.t.level meaningful?
    *  And test this! *)
-  let lt = T.Fields.map (fun x -> T.generalize x.t) f in
-  mk (record_t ?t lt) (Record f)
+  let lt = T.Fields.map (fun x -> T.generalize x.t,false) f in
+  mk (record_t ?row ?opt_row lt) (Record f)
 
 let source s =
   mk (source_t (kind_type_of_frame_kind s#kind)) (Source s)
@@ -320,6 +321,74 @@ let to_doc category flags main_doc proto return_t =
            (doc_of_prototype_item ~generalized t d doc)) proto ;
     item
 
+let register_builtin ~doc name v =
+  let names = Pcre.split ~pat:"\\." name in
+  let g = T.filter_vars (fun _ -> true) v.t in
+  match names with
+    | [] -> assert false
+    | name :: [] ->
+        Term.builtins#register ~doc name (g,v)
+    | name :: names ->
+        let base = 
+          match Term.builtins#get name with
+            | None        -> 
+                { t     = 
+                    Term.record_t ~level:(-1) ~row:false T.Fields.empty;
+                  value = Record T.Fields.empty } 
+            | Some (_, v) -> v
+        in
+        let rec aux cur names =
+          let r = 
+            match cur.value with
+              | Record r -> r
+              | _        -> assert false
+          in
+          let t =
+            match cur.t.T.descr with
+              | T.Record t -> t
+              | _        -> assert false
+          in
+          match names with
+            | [] -> assert false
+            | name::[] ->
+                { t = { cur.t with 
+                          T.descr = 
+                            T.Record { t with 
+                              T.fields = T.Fields.add 
+                                           name ((g,v.t),false) t.T.fields }};
+                  value = Record (T.Fields.add name v r) }
+            | name::names -> 
+                 let v' = 
+                   try
+                     (T.Fields.find name r).value
+                   with
+                     | Not_found -> Record T.Fields.empty
+                 in
+                 let t' =
+                   try
+                     let ((_,t),_) = T.Fields.find name t.T.fields in
+                     t
+                   with
+                     | Not_found -> 
+                        Term.record_t ~level:(-1) ~row:false T.Fields.empty
+                 in
+                 let ret = 
+                   aux { t     = t';
+                         value = v' } names
+                 in
+                 let g = T.filter_vars (fun _ -> true) ret.t in
+                 { t = { cur.t with
+                          T.descr = 
+                            T.Record { t with 
+                              T.fields = T.Fields.add 
+                                            name ((g,ret.t),false) t.T.fields }};
+                  value = Record (T.Fields.add name ret r) }
+        in
+        let v = aux base names in
+        let g = T.filter_vars (fun _ -> true) v.t in
+        Term.builtins#register ~doc name (g,v)
+
+
 let add_builtin ~category ~descr ?(flags=[]) name proto return_t f =
   let t = builtin_type proto return_t in
   let f env t = f (List.map (fun (s,(l,v)) -> assert (l=[]) ; s,v) env) t in
@@ -329,11 +398,9 @@ let add_builtin ~category ~descr ?(flags=[]) name proto return_t f =
                    [],
                    f) }
   in
-  let generalized = T.filter_vars (fun _ -> true) t in
-    Term.builtins#register
+    register_builtin
       ~doc:(to_doc category flags descr proto return_t)
-      name
-      (generalized,value)
+      name value
 
 let add_builtin_base ~category ~descr ?(flags=[]) name value t =
   let doc = new Doc.item ~sort:false descr in
@@ -344,7 +411,7 @@ let add_builtin_base ~category ~descr ?(flags=[]) name value t =
     List.iter
       (fun f -> doc#add_subsection "_flag" (Doc.trivial (string_of_flag f)))
       flags;
-    Term.builtins#register ~doc name (generalized,value)
+    register_builtin ~doc name value
 
 (** Specialized version for operators, that is builtins returning sources. *)
 
@@ -432,10 +499,12 @@ let iter_sources f v =
     | Term.List l -> List.iter (iter_term env) l
     | Term.Record r -> 
         T.Fields.iter (fun _ a -> iter_term env a) r
-    | Term.Field (r,_) -> iter_term env r
+    | Term.Field (r,_,_) -> iter_term env r
     | Term.Replace_field (r,x,v) ->
       (* TODO: iter on r too *)
       iter_term env v
+      (* TODO: is that correct? *)
+    | Term.Is_field _ -> ()
     | Term.Ref a | Term.Get a -> iter_term env a
     | Term.Let {Term.def=a;body=b}
     | Term.Product (a,b) | Term.Seq (a,b) | Term.Set (a,b) ->

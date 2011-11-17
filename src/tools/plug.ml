@@ -23,54 +23,34 @@
 (** A [plug] is something where plug-ins plug.
   We build [plug] on the top of [Doc.item]. *)
 
-class ['a] plug name ?(register_hook=fun _ -> ()) ?split_name doc insensitive =
+class ['a] plug name ?(register_hook=fun _ -> ()) doc insensitive 
+                     duplicates =
 object (self)
   inherit Doc.item doc
 
-  val mutable plugins : (string * 'a) list = []
+  val mutable plugins : (string*'a) list = []
 
   method register plugin ?doc ?sdoc v =
-    let splugin = if insensitive then String.uppercase plugin else plugin in
-    let plugin_name, plugin_fields =
-      if split_name = None then
-        splugin, []
-      else
-        let plugin = Pcre.split ~pat:"\\." splugin in
-        List.hd plugin, List.tl plugin
-    in
+    let plugin = if insensitive then String.uppercase plugin else plugin in
     let doc = match doc,sdoc with
       | (Some d), _ -> d
       | _, None -> Doc.trivial "(no doc)"
       | _, (Some s) -> Doc.trivial s
     in
-    let v =
-      match split_name with
-        | None -> v
-        | Some f ->
-          (* We use f to merge with the previous value. *)
-          let old =
-            try
-              Some (List.assoc plugin_name plugins)
-            with
-              | Not_found -> None
-          in
-          f old plugin_fields v
-    in
-    let _subsections, _plugins =
-      if split_name = None then
-        subsections, plugins
-      else
-        List.filter (fun (k,_) -> k<>splugin) subsections,
-        List.filter (fun (k,_) -> k<>plugin_name) plugins
-    in
-    subsections <- (splugin,doc)::_subsections;
-    plugins <- (plugin_name,v)::_plugins;
-    register_hook (splugin,v)
+      if duplicates then begin
+        subsections <- (plugin,doc)::subsections ;
+        plugins <- (plugin,v)::plugins
+      end else begin
+        subsections <-
+          (plugin,doc)::(List.filter (fun (k,_) -> k<>plugin) subsections) ;
+        plugins <- (plugin,v)::(List.filter (fun (k,_) -> k<>plugin) plugins)
+      end ;
+      register_hook (plugin,v)
 
   method is_registered a = List.mem_assoc a plugins
   method keys = List.fold_left (fun l (k,v) -> k::l) [] plugins
-  method iter ?(rev=false) f =
-    let plugins =
+  method iter ?(rev=false) f = 
+    let plugins = 
       if rev then
         List.rev plugins
       else
@@ -84,16 +64,17 @@ object (self)
         Some (List.assoc plugin plugins)
       with
         | Not_found -> None
+
 end
 
 (** Every [plug] plugs in [plugs] *)
 
 let plugs = new Doc.item "All the plugs"
 
-let create ?split_name ?register_hook ?insensitive ?doc plugname =
+let create ?(duplicates=true) ?register_hook ?insensitive ?doc plugname =
   let insensitive = match insensitive with Some true -> true | _ -> false in
   let doc = match doc with None -> "(no doc)" | Some d -> d in
-  let plug = new plug ?register_hook ?split_name plugname doc insensitive in
+  let plug = new plug ?register_hook plugname doc insensitive duplicates in
     plugs#add_subsection plugname (plug:>Doc.item) ;
     plug
 

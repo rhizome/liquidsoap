@@ -110,7 +110,7 @@ object (self)
 end
 
 let () =
-  Lang.add_operator "input.keyboard.sdl"
+  Lang.add_operator "input.sdl.keyboard"
     [
       "velocity", Lang.float_t, Some (Lang.float 0.8),
       Some "Velocity of notes."

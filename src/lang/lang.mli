@@ -176,7 +176,7 @@ val float_t  : t
 val bool_t   : t
 val string_t : t
 
-val record_t    : ?t:t -> Lang_types.scheme Lang_types.Fields.t -> t
+val record_t    : ?row:t -> ?opt_row:t -> (Lang_types.scheme*bool) Lang_types.Fields.t -> t
 val of_record_t : t -> (Lang_types.scheme, t) Lang_types.record
 
 val product_t    : t -> t -> t
@@ -227,7 +227,7 @@ val unit : value
 val int : int -> value
 val bool : bool -> value
 val float : float -> value
-val record : ?t:t -> value Lang_types.Fields.t -> value
+val record : ?row:t -> ?opt_row:t -> value Lang_types.Fields.t -> value
 val string : string -> value
 val list : t:t -> value list -> value
 val source : Source.source -> value

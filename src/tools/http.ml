@@ -86,7 +86,7 @@ let args_split s =
 (* exception Invalid_url *)
 
 let url_split_host_port url =
-  let basic_rex = Pcre.regexp "^http://([^/:]+)(:[0-9]+)?(/.*)$" in
+  let basic_rex = Pcre.regexp "^http://([^/:]+)(:[0-9]+)?(/.*)?$" in
   let sub =
     try
       Pcre.exec ~rex:basic_rex url
@@ -95,7 +95,12 @@ let url_split_host_port url =
         (* raise Invalid_url *)
         failwith "Invalid URL."
   in
-  let host,uri = Pcre.get_substring sub 1,Pcre.get_substring sub 3 in
+  let host = Pcre.get_substring sub 1 in
+  let uri = 
+    try
+      Pcre.get_substring sub 3 
+    with Not_found -> "/"
+  in
   let port =
     try
       let port = Pcre.get_substring sub 2 in

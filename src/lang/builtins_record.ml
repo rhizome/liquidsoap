@@ -25,11 +25,11 @@
 open Lang_builtins
 
 let () = 
-  let t = Lang.univ_t 1 in
+  let row = Lang.univ_t 1 in
   let e = Lang_types.Fields.empty in
   add_builtin "record.labels" ~cat:Liq
     ~descr:"Get the list of defined labels of a record."
-   ["",Lang.record_t ~t e,None,None] (Lang.list_t Lang.string_t)
+   ["",Lang.record_t ~row e,None,None] (Lang.list_t Lang.string_t)
    (fun p ->
      let l = Lang.to_record (List.assoc "" p) in
      let l = Lang_types.list_of_fields l in
@@ -38,8 +38,9 @@ let () =
      Lang.list ~t:Lang.string_t l)
 
 let () =
+  let opt_row = Lang.univ_t 1 in
   Lang.add_builtin_base "record.empty" 
     ~category:(string_of_category Liq)
     ~descr:"An empty record."
     (Lang.Record Lang_types.Fields.empty) 
-    (Lang.record_t Lang_types.Fields.empty)
+    (Lang.record_t ~opt_row Lang_types.Fields.empty)

@@ -344,7 +344,7 @@ let () =
       "", Lang.list_t (Lang.product_t pred_t (Lang.source_t kind)), None,
       Some "Sources with the predicate telling when they can be played." ]
   in
-    Lang.add_operator "switch"
+    Lang.add_operator "source.switch"
       ~category:Lang.TrackProcessing
       ~descr:"At the beginning of a track, select the first source
               whose predicate is true."
@@ -411,7 +411,7 @@ let () =
       None,
       Some "Select the first ready source in this list." ]
   in
-    Lang.add_operator "fallback" ~category:Lang.TrackProcessing
+    Lang.add_operator "source.fallback" ~category:Lang.TrackProcessing
       ~descr:"At the beginning of each track, select the first ready child."
       (common kind @ proto)
       ~kind:(Lang.Unconstrained kind)
@@ -500,11 +500,11 @@ let () =
          in
            new random ~kind ~replay_meta strict ts children)
   in
-    add "random" false
+    add "source.random" false
       "At the beginning of every track, select a random ready child."
       "Weights of the children (padded with 1), defining for each child \
        the probability that it is selected." ;
-    add "rotate" true
+    add "source.rotate" true
       "Rotate between the sources."
       "Weights of the children (padded with 1), defining for each child \
        how many tracks are played from it per round, if that many are \

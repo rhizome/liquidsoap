@@ -1408,10 +1408,25 @@ let () =
 
 let () =
   let callback_t = Lang.fun_t [] Lang.string_t in
+  let fields =
+    ["method",Lang.string_t;
+     "protocol",Lang.string_t;
+     "data",Lang.string_t;
+     "headers",Lang.list_t
+                    (Lang.product_t Lang.string_t
+                     Lang.string_t);
+     "uri",Lang.string_t]
+  in
+  let fields= 
+    List.map (fun (x,y) -> (x,(([],y),false))) fields 
+  in
+  let handler_t = 
+    Lang.record_t (Lang_types.fields_of_list fields) 
+  in
   add_builtin "harbor.http.register" ~cat:Liq
     ~descr:"Register a HTTP handler on the harbor. \
-           The given function receives as argument \
-           the full requested uri (e.g. \"foo?var=bar\"), \
+           The given function receives a record containing \
+           the full requested uri (e.g. res.uri=\"foo?var=bar\"), \
            method type, http protocol version, possible input data \
            and the list of HTTP headers \
            and returns a response callback for the client. This function is \
@@ -1422,13 +1437,7 @@ let () =
            metadata handlers."
     [ "port",Lang.int_t,None,Some "Port to server.";
       "",Lang.string_t,None,Some "URI to serve." ;
-      "",Lang.fun_t [(false,"method",Lang.string_t);
-                     (false,"protocol",Lang.string_t);
-                     (false,"data",Lang.string_t);
-                     (false,"headers",Lang.list_t
-                                 (Lang.product_t Lang.string_t
-                                                 Lang.string_t));
-                     (false,"",Lang.string_t)]
+      "",Lang.fun_t [(false,"", handler_t)]
                      callback_t,
       None,Some "Function to execute. method argument \
                  is \"PUT\" or \"GET\", protocol argument is \
@@ -1451,12 +1460,19 @@ let () =
          let l = Lang.list ~t:(Lang.product_t Lang.string_t Lang.string_t)
                            l
          in
+         let fields =
+           ["uri",Lang.string uri;
+            "headers",l;
+            "data",Lang.string data;
+            "protocol",Lang.string protocol;
+            "method",Lang.string http_method]
+         in
+         let handler =
+           Lang.record (Lang_types.fields_of_list fields)
+         in 
          let callback = 
            Lang.apply ~t:callback_t
-             f [("",Lang.string uri);("headers",l);
-                ("data",Lang.string data);
-                ("protocol",Lang.string protocol);
-                ("method",Lang.string http_method)]
+             f ["",handler];
          in
          let callback () = 
            Lang.to_string (Lang.apply ~t:Lang.string_t callback [])
@@ -2107,14 +2123,20 @@ type request = Get | Post
 
 let add_http_request name descr request =
   let log = Dtools.Log.make [name] in
-  let header_t = Lang.product_t Lang.string_t Lang.string_t in
-  let headers_t = Lang.list_t header_t in
-  let status_t =
-    Lang.product_t (Lang.product_t Lang.string_t Lang.int_t) Lang.string_t
+  let header_t   = Lang.product_t Lang.string_t Lang.string_t in
+  let headers_t  = Lang.list_t header_t in
+  let response_fields = 
+    ["status",   Lang.string_t;
+     "code",     Lang.int_t;
+     "protocol", Lang.string_t;
+     "headers",  headers_t;
+     "data",     Lang.string_t]
   in
-  let request_return_t =
-    Lang.product_t (Lang.product_t status_t headers_t) Lang.string_t
+  let response_fields = 
+    List.map (fun (x,y) -> x,(([],y),false)) response_fields
   in
+  let response_fields = Lang_types.fields_of_list response_fields in
+  let response_t      = Lang.record_t response_fields in
   let params =
     if request = Get then
       []
@@ -2133,7 +2155,7 @@ let add_http_request name descr request =
   in
   add_builtin name ~cat:Interaction ~descr
     params
-    request_return_t
+    response_t
     (fun p ->
       let headers = List.assoc "headers" p in
       let headers = Lang.to_list headers in
@@ -2143,43 +2165,42 @@ let add_http_request name descr request =
       in
       let timeout = Lang.to_float (List.assoc "timeout" p) in
       let url = Lang.to_string (List.assoc "" p) in
-      let host, port, url = Http.url_split_host_port url in
-      let port = match port with Some p -> p | None -> 80 in
-      let request =
-        if request = Get then
-           Http.Get
-        else
-          begin
-            let data = Lang.to_string (List.assoc "data" p) in
-            Http.Post data
-          end
+      let ((protocol,code,status),headers,data) =
+       try
+        let host, port, url = Http.url_split_host_port url in
+        let port = match port with Some p -> p | None -> 80 in
+        let request =
+          if request = Get then
+             Http.Get
+          else
+            begin
+              let data = Lang.to_string (List.assoc "data" p) in
+              Http.Post data
+            end
+        in
+        let log = log#f 4 "%s" in
+        Http.full_request ~log ~timeout ~headers 
+                          ~port ~host ~url ~request ()
+      with
+        | e ->
+           (* Here we return a fake code.. *)
+           ("Internal error",999,"Internal error"),[],
+            (Printf.sprintf "Error while processing request: %s"
+                (Utils.error_message e))
       in
-      let log = log#f 4 "%s" in
-      let ((x,y,z),headers,data) =
-        try
-          Http.full_request ~log ~timeout ~headers 
-                            ~port ~host ~url ~request ()
-        with
-          | e ->
-             (* Here we return a fake code.. *)
-             ("Internal error",999,"Internal error"),[],
-              (Printf.sprintf "Error while processing request: %s"
-                  (Utils.error_message e))
+      let headers = 
+         Lang.list ~t:headers_t 
+           (List.map (fun (x,y) -> Lang.product (Lang.string x) (Lang.string y))
+                     headers)
       in
-      let status =
-        Lang.product
-          (Lang.product (Lang.string x) (Lang.int y))
-          (Lang.string z)
+      let fields =
+        ["protocol", Lang.string protocol;
+         "code",     Lang.int code;
+         "status",   Lang.string status;
+         "headers",  headers;
+         "data",     Lang.string data]
       in
-      let headers =
-        List.map
-          (fun (x,y) -> Lang.product (Lang.string x) (Lang.string y))
-          headers
-      in
-      let headers = Lang.list ~t:header_t headers in
-      Lang.product
-        (Lang.product status headers)
-        (Lang.string data))
+      Lang.record (Lang_types.fields_of_list fields))   
 
 let () =
   add_http_request

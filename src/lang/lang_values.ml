@@ -43,7 +43,7 @@ let ref_t ~pos ~level t =
 let zero_t = T.make T.Zero
 let succ_t t = T.make (T.Succ t)
 let variable_t = T.make T.Variable
-let record_t ~row fields = T.record ~row fields
+let record_t ~level ~row fields = T.record ~level ~row ~opt_row:true fields
 
 let rec type_of_int n = if n=0 then zero_t else succ_t (type_of_int (n-1))
 
@@ -134,11 +134,12 @@ and in_term =
   | Encoder of Encoder.format
   | List    of term list
   | Record  of term T.Fields.t
-  | Field   of term * string
+  | Field   of term * string * (term option)
   (* [Replace_field (r,x,v)] does the same thing as { r with x = v } in OCaml,
      excepting that [r] is set to the empty record if it was not previously
      defined. *)
   | Replace_field of term * string * term
+  | Is_field of term * string
   | Product of term * term
   | Ref     of term
   | Get     of term
@@ -192,14 +193,16 @@ let rec print_term v = match v.term with
           tl
       in
         (print_term hd)^"("^(String.concat "," tl)^")"
-  | Let _ | Seq _ | Get _ | Set _ | Field _ | Replace_field _ -> assert false
+  | Let _ | Seq _ | Get _ | Set _ 
+  | Field _ | Replace_field _ | Is_field _ -> assert false
 
 let rec free_vars tm = match tm.term with
   | Unit | Bool _ | Int _ | String _ | Float _ | Encoder _ ->
       Vars.empty
   | Var x -> Vars.singleton x
-  | Ref r | Get r | Field (r,_) -> free_vars r
+  | Ref r | Get r | Field (r,_,_) -> free_vars r
   | Replace_field (r,_,v) -> Vars.union (free_vars r) (free_vars v)
+  | Is_field (r,_) -> free_vars r
   | Product (a,b) | Seq (a,b) | Set (a,b) ->
       Vars.union (free_vars a) (free_vars b)
   | List l ->
@@ -250,7 +253,12 @@ let rec check_unused ~lib tm =
   let rec check ?(toplevel=false) v tm = match tm.term with
     | Var s -> Vars.remove s v
     | Unit | Bool _ | Int _ | String _ | Float _ | Encoder _ -> v
-    | Ref r | Get r | Field (r,_) -> check v r
+    | Ref r | Get r | Is_field (r,_) -> check v r
+    | Field (r,_,o) -> 
+       if o <> None then
+         check (check v (Utils.get_some o)) r
+       else
+         check v r
     | Product (a,b) | Set (a,b) -> check (check v a) b
     | Seq (a,b) -> check ~toplevel (check v a) b
     | List l -> List.fold_left check v l
@@ -336,9 +344,13 @@ let rec map_types f (gen:'a list) tm = match tm.term with
   | Record r ->
       { t = f gen tm.t ;
         term = Record (T.Fields.map (fun t -> map_types f gen t) r) }
-  | Field (r,x) ->
+  | Field (r,x,o) ->
       { t = f gen tm.t ;
-        term = Field (map_types f gen r, x) }
+        term = Field (map_types f gen r, x, 
+                      Utils.may (map_types f gen) o) }
+  | Is_field (r,x) ->
+      { t = f gen tm.t; 
+        term = Is_field (map_types f gen r,x) }
   | Replace_field (r,x,v) ->
       { t = f gen tm.t ;
         term = Replace_field (map_types f gen r, x, map_types f gen v) }
@@ -347,9 +359,8 @@ let rec map_types f (gen:'a list) tm = match tm.term with
         term = App (map_types f gen hd,
                     List.map (fun (lbl,v) -> lbl, map_types f gen v) l) }
   | Fun (fv,p,v) ->
-      let aux = function
-        | (lbl,var,t,None) -> lbl, var, f gen t, None
-        | (lbl,var,t,Some tm) -> lbl, var, f gen t, Some (map_types f gen tm)
+      let aux = 
+        fun (lbl,var,t,tm) -> lbl, var, f gen t, Utils.may (map_types f gen) tm
       in
         { t = f gen tm.t ;
           term = Fun (fv, List.map aux p, map_types f gen v) }
@@ -370,8 +381,13 @@ let rec fold_types f gen x tm = match tm.term with
   | Record r ->
       T.Fields.fold (fun _ tm x -> fold_types f gen x tm) r (f gen x tm.t)
   (* In the next cases, don't care about tm.t, nothing "new" in it. *)
-  | Ref r | Get r | Field (r,_) ->
+  | Ref r | Get r | Is_field (r,_) ->
       fold_types f gen x r
+  | Field (r,_,o) ->
+      if o <> None then
+       fold_types f gen (fold_types f gen x (Utils.get_some o)) r
+      else
+       fold_types f gen x r
   | Replace_field (r,_,v) ->
     let x = fold_types f gen x r in
     fold_types f gen x v
@@ -511,49 +527,12 @@ struct
         assert (f gen v.t = v.t) ;
         r := map_types f gen !r ;
         v
-
-  let empty_record () =
-    { t = record_t ~row:false T.Fields.empty; 
-      value = Record T.Fields.empty }
 end
 
 (** {1 Built-in values and toplevel definitions} *)
 
-let builtins : (T.cvar list * V.value) Plug.plug =
-  (* This function is used to merge the new value with the old record. *)
-  let split_name r x (c,v) =
-    let rec aux r x =
-      match x with
-        | [] -> c,v
-        | x::xx ->
-          let cr, tr, r =
-            match r with
-              | Some (cr, ({ V.value = V.Record r } as vr)) ->
-                let cr, tr =
-                  match (T.deref vr.V.t).T.descr with
-                    | T.Record tr -> cr, (T.merge_record tr).T.fields
-                    | _ -> assert false
-                in
-                cr, tr, r
-              | _ -> [], T.Fields.empty, T.Fields.empty
-          in
-          let cx,rx = 
-            try fst (T.Fields.find x tr), 
-                 T.Fields.find x r 
-            with Not_found -> [], V.empty_record () 
-          in
-          let cx,rx = aux (Some (cx,rx)) xx in
-          let r = T.Fields.remove x r in
-          let r = T.Fields.add x rx r in
-          let r = V.Record r in
-          let tr = T.Fields.remove x tr in
-          let tr = T.Fields.add x (cx,rx.V.t) tr in
-          let tr = record_t ~row:false tr in
-          cr, { V.t = tr; value = r }
-    in
-    aux r x
-  in
-  Plug.create ~split_name ~doc:"scripting values" "scripting values"
+let builtins : (T.cvar list * V.value) Plug.plug
+  = Plug.create ~duplicates:false ~doc:"scripting values" "scripting values"
 
 (* {1 Type checking/inference} *)
 
@@ -563,6 +542,7 @@ let (>:) = T.(>:)
 let rec value_restriction t = match t.term with
   | Var _ -> true
   | Fun _ -> true
+  | Record _ -> true
   | List l -> List.for_all value_restriction l
   | Product (a,b) -> value_restriction a && value_restriction b
   | _ -> false
@@ -638,40 +618,52 @@ let rec check ?(print_toplevel=false) ~level ~env e =
       T.Fields.iter (fun  _ tm -> check ~level ~env tm) r ;
       let tr = T.Fields.map (fun _ -> T.fresh_evar ~level ~pos) r in
       T.Fields.iter (fun x item -> item.t <: T.Fields.find x tr) r;
-      let tr = T.Fields.map T.generalize tr in
-      e.t >: record_t ~row:false tr
-  | Field (r,x) ->
+      let tr = T.Fields.map (fun v -> T.generalize v,false) tr in
+      e.t >: record_t ~level ~row:false tr
+  | Is_field (r,x) -> 
       check ~level ~env r ;
       let v = T.fresh_evar ~level ~pos in
-      let fields = 
-        T.Fields.add x ([],v) T.Fields.empty 
-      in
-      r.t <: record_t ~row:true fields;
-      let g =
-        match (T.deref r.t).T.descr with
-          | T.Record r ->
-            (* TODO: handle Not_found *)
-            fst (T.Fields.find x r.T.fields)
-          | _ -> assert false
-      in
-      let v = T.instantiate ~level ~generalized:g v in
-      e.t >: v
+      let fields = T.Fields.add x (([],v),true) T.Fields.empty in
+      r.t <: record_t ~level ~row:true fields;
+      e.t >: mkg T.Bool
+  | Field (r,x,o) ->
+      check ~level ~env r ;
+      begin
+        match o with
+          | Some v ->
+              check ~level ~env v;
+              let fields = T.Fields.add x (([],v.t),true) T.Fields.empty in
+              r.t <: record_t ~level ~row:true fields;
+              e.t >: v.t
+          | None ->
+              let v = T.fresh_evar ~level ~pos in
+              let fields = 
+                T.Fields.add x (([],v),false) T.Fields.empty 
+              in
+              r.t <: record_t ~level ~row:true fields;
+              let (g,_),_ =
+                match (T.deref r.t).T.descr with
+                  | T.Record r -> T.Fields.find x r.T.fields
+                  | _ -> assert false
+              in
+              let v = T.instantiate ~level ~generalized:g v in
+              e.t >: v
+      end
   | Replace_field (r,x,v) ->
       check ~level ~env v;
       check ~level ~env r;
-      r.t <: record_t ~row:true T.Fields.empty;
-      let rt = r.t in
+      r.t <: record_t ~level ~row:true T.Fields.empty;
       let r =
-        match (T.deref rt).T.descr with
-          | T.Record r -> T.merge_record r
+        match (T.deref r.t).T.descr with
+          | T.Record r -> r
           | _ -> assert false
       in
-      let fields = T.Fields.remove x r.T.fields in
       let fields = 
-        T.Fields.add x (T.generalize v.t) fields 
+        T.Fields.add x (T.generalize v.t,false) r.T.fields 
       in
-      let rt = mk (T.Record {T.fields = fields;
-                               row    = r.T.row}) 
+      let rt = mk (T.Record {T.fields  = fields;
+                               row     = r.T.row;
+                               opt_row = r.T.opt_row})
       in
       e.t >: rt
   | Product (a,b) ->
@@ -913,18 +905,42 @@ let rec eval ~env tm =
       | Product (a,b) -> mk (V.Product (eval ~env a, eval ~env b))
       | Record r -> 
           mk (V.Record (T.Fields.map (fun v -> eval ~env v) r))
-      | Field (r,x) ->
+      | Field (r,x,o) ->
         let v =
           match (eval ~env r).V.value with
-            | V.Record r -> T.Fields.find x r
-          | _ -> assert false
+            | V.Record r -> 
+                begin
+                 try
+                  T.Fields.find x r
+                 with
+                   | _ -> eval ~env (Utils.get_some o)
+                end
+            | _ -> assert false
         in
-        let g,t =
+        let (g,t),o =
           match (T.deref r.t).T.descr with
-            | T.Record r -> T.Fields.find x r.T.fields
+            | T.Record r ->
+                begin 
+                 try
+                   T.Fields.find x r.T.fields
+                 with _ -> ([],(Utils.get_some o).t),true
+                end
             | _ -> assert false
         in
         instantiate ~generalized:g v
+      | Is_field (r,x) ->
+          let r =
+            match (eval ~env r).V.value with
+              | V.Record r -> r
+              | _ -> assert false
+          in
+          begin
+           try
+             ignore(T.Fields.find x r);
+             mk (V.Bool true)
+           with
+             | Not_found -> mk (V.Bool false)
+          end
       | Replace_field (r,x,v) ->
         let r = eval ~env r in
         let r =
@@ -932,7 +948,6 @@ let rec eval ~env tm =
             | V.Record r -> r
             | _ -> assert false
         in
-        let r = T.Fields.remove x r in
         let r = 
           T.Fields.add x (eval ~env v) r 
         in
@@ -963,9 +978,7 @@ let rec eval ~env tm =
            * which are declared with values as defaults. *)
           let p =
             List.map
-              (function
-                 | (lbl,var,_,Some v) -> lbl,var,Some (eval ~env v)
-                 | (lbl,var,_,None) -> lbl,var,None)
+              (fun (lbl,var,_,v) -> lbl,var,Utils.may (eval ~env) v)
               p
           in
           let env = List.filter (fun (x,_) -> Vars.mem x fv) env in

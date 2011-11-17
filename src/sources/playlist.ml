@@ -509,7 +509,7 @@ let () =
                    (s,"valid values are 'random', 'randomize' and 'normal'"))
   in
 
-    Lang.add_operator "playlist"
+    Lang.add_operator "playlist.base"
       ~category:Lang.Input
       ~descr:"Loop on a playlist of URIs."
       (Request_source.queued_proto@proto)

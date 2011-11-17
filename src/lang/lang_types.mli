@@ -35,9 +35,11 @@ val print_constr : constr -> string
 
 module Fields : Map.S with type key = string
 type ('a,'b) record = {
-  fields : 'a Fields.t;
-  row    : 'b option }
+  fields : ('a*bool) Fields.t;
+  row    : 'b option;
+  opt_row : 'b option}
 val list_of_fields : 'a Fields.t -> (string*'a) list
+val fields_of_list : (string*'a) list -> 'a Fields.t
 
 type t = { pos : pos option; mutable level : int; mutable descr : descr; }
 and constructed = { name : string ; params : (variance*t) list }
@@ -85,4 +87,4 @@ val ( >: ) : t -> t -> unit
 
 val fresh : constraints:constraints -> level:int -> pos:pos option -> t
 val fresh_evar : level:int -> pos:pos option -> t
-val record : ?level:int -> row:bool -> scheme Fields.t -> t
+val record : level:int -> row:bool -> opt_row:bool -> (scheme*bool) Fields.t -> t

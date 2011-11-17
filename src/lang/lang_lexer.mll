@@ -162,6 +162,7 @@ rule token = parse
   | ';' { SEQ }
   | ";;" { SEQSEQ }
   | '.' { FIELD }
+  | "?" { QMARK }
   | "~" { TILD }
   | "-" { MINUS }
   | "not" { NOT }

@@ -48,10 +48,30 @@
     let fv = Lang_values.free_vars ~bound body in
       mk ?pos (Fun (fv,args,body))
 
-  let deep_field (e,xx) =
+  let deep_field ?opt (e,xx) =
     let rec aux e = function
-      | [] -> e
-      | x::xx -> aux (mk (Field (e, x))) xx
+      | [] -> assert false
+      | x::[] -> mk (Field (e, x, opt))
+      | x::xx -> 
+          let opt = 
+            if opt <> None then
+              Some (mk (Record Lang_types.Fields.empty))
+            else
+              None
+          in
+          aux (mk (Field (e, x, opt))) xx
+    in
+    aux (mk (Var e)) xx
+
+  let is_deep_field (e,xx) =
+    let rec aux e = function
+      | [] -> assert false
+      | x::[] -> mk (Is_field (e, x))
+      | x::xx ->
+          let opt = 
+            Some (mk (Record Lang_types.Fields.empty))
+          in
+          aux (mk (Field (e, x, opt))) xx
     in
     aux (mk (Var e)) xx
 
@@ -70,7 +90,7 @@
            twice... Can you think of something nicer? *)
         (* (fun (#) -> [# with x = v]) r *)
         let en = "#" in
-        let ex = mk (Field (mk (Var en),x)) in
+        let ex = mk (Field (mk (Var en),x,None)) in
         let f = mk (Replace_field(mk (Var en), x, replace_deep_field ex xx v)) in
         let f = mk_fun ["",en,T.fresh_evar ~level:(-1) ~pos:None,None] f in
         mk (App (f,["",e]))
@@ -187,7 +207,7 @@
 %token BEGIN END GETS TILD
 %token <Doc.item * (string*string) list> DEF
 %token IF THEN ELSE ELSIF
-%token LPAR RPAR COMMA SEQ SEQSEQ COLON
+%token LPAR RPAR COMMA SEQ SEQSEQ COLON QMARK
 %token LBRA RBRA LCUR RCUR
 %token FUN YIELDS
 %token <string> BIN0
@@ -301,7 +321,8 @@ expr:
   | STRING                           { mk (String $1) }
   | list                             { mk (List $1) }
   | record                           { mk (Record $1) }
-  | expr FIELD VAR                   { mk (Field ($1, $3)) }
+  | QMARK LPAR RECORD_FIELD   GETS expr RPAR  { deep_field ~opt:$5 $3 }
+  | RECORD_FIELD QMARK               { is_deep_field $1 }
   | RECORD_FIELD                     { deep_field $1 }
   | LBRA expr WITH inner_record RBRA { replace_fields $2 $4 }
   | REF expr                         { mk (Ref $2) }
@@ -322,7 +343,7 @@ expr:
   | VAR                              { mk (Var $1) }
   | VARLPAR app_list RPAR            { mk (App (mk ~pos:(1,1) (Var $1),$2)) }
   | RECORD_FIELD_LPAR app_list RPAR  { mk (App (deep_field $1,$2)) }
-  | expr FIELD VARLPAR app_list RPAR { mk (App (mk (Field ($1, $3)), $4)) }
+  | expr FIELD VARLPAR app_list RPAR { mk (App (mk (Field ($1, $3, None)), $4)) }
   | VARLBRA expr RBRA                { mk (App (mk ~pos:(1,1) (Var "_[_]"),
                                            ["",$2;
                                             "",mk ~pos:(1,1) (Var $1)])) }
@@ -391,7 +412,8 @@ cexpr:
   | STRING                           { mk (String $1) }
   | list                             { mk (List $1) }
   | record                           { mk (Record $1) }
-  | cexpr FIELD VAR                  { mk (Field ($1, $3)) }
+  | QMARK LPAR RECORD_FIELD    GETS expr RPAR  { deep_field ~opt:$5 $3 }
+  | RECORD_FIELD QMARK               { is_deep_field $1 }
   | RECORD_FIELD                     { deep_field $1 }
   | LBRA expr WITH inner_record RBRA { replace_fields $2 $4 }
   | REF expr                         { mk (Ref $2) }
@@ -412,7 +434,7 @@ cexpr:
   | VAR                              { mk (Var $1) }
   | VARLPAR app_list RPAR            { mk (App (mk ~pos:(1,1) (Var $1),$2)) }
   | RECORD_FIELD_LPAR app_list RPAR  { mk (App (deep_field $1,$2)) }
-  | cexpr FIELD VARLPAR app_list RPAR { mk (App (mk (Field ($1, $3)), $4)) }
+  | cexpr FIELD VARLPAR app_list RPAR { mk (App (mk (Field ($1, $3, None)), $4)) }
   | VARLBRA expr RBRA                { mk (App (mk ~pos:(1,1) (Var "_[_]"),
                                            ["",$2;
                                             "",mk ~pos:(1,1) (Var $1)])) }

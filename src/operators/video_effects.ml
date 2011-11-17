@@ -82,7 +82,7 @@ let () =
          new effect ~kind Img.Effect.invert src)
 
 let () =
-  Lang.add_operator "video.opacity"
+  Lang.add_operator "video.opacity.scale"
     [
       "", Lang.float_t, None, Some "Coefficient to scale opacity with.";
       "", Lang.source_t kind, None, None
