@@ -103,6 +103,7 @@ incorrect('def f(x) = ignore(?(x.foo="aabb")^x.foo) x end f([])');
 correct('x = [foo=1] ignore(?(x.gni.bla=1)) ignore(?(x.gni="aabb"))');
 correct('x = [foo=1] ignore(x.foo?) ignore(x.gni?)');
 correct('x = [foo=1] def f(z=x) = ignore(?(z.bar="aabb")) end f([foo=1, bar="aabb"]) ?(x.bar=1)');
-incorrect('def f(x) = y = [ x with foo=1 ] ignore(x.foo) y end x = f([foo="aabb"]) x.foo^""')
+incorrect('def f(x) = y = [ x with foo=1 ] ignore(x.foo) y end x = f([foo="aabb"]) x.foo^""');
+correct('r = [f = fun(x)->x] f = fun(x)->x.f(2)+0 ignore(f(r)) ignore(r.f(""))');
 
 print "Everything's good!\n" ;
