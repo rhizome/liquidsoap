@@ -323,7 +323,7 @@ let to_doc category flags main_doc proto return_t =
 
 let register_builtin ~doc name v =
   let names = Pcre.split ~pat:"\\." name in
-  let g = T.filter_vars (fun _ -> true) v.t in
+  let (g,_) = T.generalize v.t in
   match names with
     | [] -> assert false
     | name :: [] ->
@@ -376,7 +376,7 @@ let register_builtin ~doc name v =
                    aux { t     = t';
                          value = v' } names
                  in
-                 let g = T.filter_vars (fun _ -> true) ret.t in
+                 let (g,_) = T.generalize ret.t in
                  { t = { cur.t with
                           T.descr = 
                             T.Record { t with 

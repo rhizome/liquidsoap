@@ -50,7 +50,7 @@ and descr =
   | Product of t * t
   | Zero | Succ of t | Variable
   | Arrow of (bool * string * t) list * t
-  | EVar of (int * constraints)
+  | EVar of cvar
   | Link of t
   | Record of (scheme, t) record
 and cvar = int * constraints
@@ -62,8 +62,7 @@ val make : ?pos:pos option -> ?level:int -> descr -> t
 val dummy : t
 
 val pp_type : Format.formatter -> t -> unit
-val pp_type_generalized :
-      ((int*constraints) list) -> Format.formatter -> t -> unit
+val pp_type_generalized : cvar list -> Format.formatter -> t -> unit
 val print : ?generalized:((int*constraints) list) -> t -> string
 val doc_of_type : generalized:((int*constraints) list) -> t -> Doc.item
 
