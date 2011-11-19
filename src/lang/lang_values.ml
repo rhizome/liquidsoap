@@ -549,6 +549,24 @@ let rec value_restriction t = match t.term with
   | Product (a,b) -> value_restriction a && value_restriction b
   | _ -> false
 
+let value_generalize ~level v =
+  if value_restriction v then
+    let f gen x t =
+       let x' =
+          T.filter_vars
+             (function
+                 | { T. descr = T.EVar (i,c) ; level = l } ->
+                     not (List.mem_assoc i x) &&
+                     not (List.mem_assoc i gen) && l >= level
+                 | _ -> assert false)
+             t
+       in
+       x'@x
+     in
+     fold_types f [] [] v
+    else
+     []
+
 exception Unbound of T.pos option * string
 exception Ignored of term
 
@@ -776,24 +794,7 @@ let rec check ?(print_toplevel=false) ~level ~env e =
             var (T.deref e.t).T.level (T.print orig) (T.print e.t)
   | Let ({gen=gen; var=name; def=def; body=body} as l) ->
       check ~level:level ~env def ;
-      let generalized =
-        if value_restriction def then
-          let f gen x t =
-            let x' =
-              T.filter_vars
-                (function
-                   | { T. descr = T.EVar (i,c) ; level = l } ->
-                       not (List.mem_assoc i x) &&
-                       not (List.mem_assoc i gen) && l >= level
-                   | _ -> assert false)
-                t
-            in
-            x'@x
-          in
-            fold_types f [] [] def
-        else
-          []
-      in
+      let generalized = value_generalize ~level def in
       let env = (name,(generalized,def.t))::env in
         l.gen <- generalized ;
         if print_toplevel then
@@ -1126,7 +1127,10 @@ let rec eval_toplevel ?(interactive=false) t =
     | _ ->
         let v = eval ~env:builtins#get_all t in
           if interactive && t.term <> Unit then
+           begin
+            let generalized = value_generalize ~level:0 t in
             Format.printf "- : %a = %s@."
-              T.pp_type v.V.t
-              (V.print_value v) ;
+              (T.pp_type_generalized generalized) v.V.t
+              (V.print_value v) 
+           end ;
           v
