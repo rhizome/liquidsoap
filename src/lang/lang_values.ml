@@ -540,9 +540,11 @@ let (<:) = T.(<:)
 let (>:) = T.(>:)
 
 let rec value_restriction t = match t.term with
-  | Var _ -> true
-  | Fun _ -> true
-  | Record _ -> true
+  | Var _ | Fun _ | Bool _ 
+  | Float _ | Int _ | Is_field _ -> true
+  | Record r -> 
+      let r = Lang_types.list_of_fields r in
+      List.for_all (fun (_,v) -> value_restriction v) r
   | List l -> List.for_all value_restriction l
   | Product (a,b) -> value_restriction a && value_restriction b
   | _ -> false
