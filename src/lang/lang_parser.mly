@@ -82,6 +82,8 @@
   let replace_fields x r = 
     replace_fields x (T.list_of_fields r) 
 
+  let field tm = { rgen = [] ; rval = tm }
+
   let rec replace_deep_field e xx v =
     match xx with
       | [] -> v
@@ -91,9 +93,9 @@
         (* (fun (#) -> [# with x = v]) r *)
         let en = "#" in
         let ex = mk (Field (mk (Var en),x,None)) in
-        let f = mk (Replace_field(mk (Var en), x, replace_deep_field ex xx v)) in
+        let f = mk (Replace_field(mk (Var en), x, field (replace_deep_field ex xx v))) in
         let f = mk_fun ["",en,T.fresh_evar ~level:(-1) ~pos:None,None] f in
-        mk (App (f,["",e]))
+          mk (App (f,["",e]))
 
   (** Time intervals *)
 
@@ -483,8 +485,10 @@ record:
     /* TODO: check that we don't have the same label defined twice! */
   | LBRA inner_record RBRA { $2 }
 inner_record:
-  | VAR GETS expr COMMA inner_record { Lang_types.Fields.add $1 $3 $5 }
-  | VAR GETS expr { Lang_types.Fields.add $1 $3 Lang_types.Fields.empty }
+  | VAR GETS expr COMMA inner_record { Lang_types.Fields.add $1 (field $3) $5 }
+  | VAR GETS expr                    { Lang_types.Fields.add
+                                         $1 (field $3)
+                                         Lang_types.Fields.empty }
 
 
 app_list_elem:

@@ -501,12 +501,11 @@ let iter_sources f v =
     | Term.Int _ | Term.Float _ | Term.Encoder _ -> ()
     | Term.List l -> List.iter (iter_term env) l
     | Term.Record r -> 
-        T.Fields.iter (fun _ a -> iter_term env a) r
+        T.Fields.iter (fun _ a -> iter_term env a.Lang_values.rval) r
     | Term.Field (r,_,_) -> iter_term env r
     | Term.Replace_field (r,x,v) ->
-      (* TODO: iter on r too *)
-      iter_term env v
-      (* TODO: is that correct? *)
+        (* TODO: is that correct? *)
+        iter_term env r ; iter_term env v.Lang_values.rval
     | Term.Is_field _ -> ()
     | Term.Ref a | Term.Get a -> iter_term env a
     | Term.Let {Term.def=a;body=b}

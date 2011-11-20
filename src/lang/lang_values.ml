@@ -125,6 +125,10 @@ and let_t = {
   def : term ;
   body : term
 }
+and field_t = {
+  mutable rgen : (int*T.constraints) list ;
+  rval : term
+}
 and in_term =
   | Unit
   | Bool    of bool
@@ -133,12 +137,12 @@ and in_term =
   | Float   of float
   | Encoder of Encoder.format
   | List    of term list
-  | Record  of term T.Fields.t
+  | Record  of field_t T.Fields.t
   | Field   of term * string * (term option)
   (* [Replace_field (r,x,v)] does the same thing as { r with x = v } in OCaml,
      excepting that [r] is set to the empty record if it was not previously
      defined. *)
-  | Replace_field of term * string * term
+  | Replace_field of term * string * field_t
   | Is_field of term * string
   | Product of term * term
   | Ref     of term
@@ -178,7 +182,7 @@ let rec print_term v = match v.term with
   | Record r ->
     "["^String.concat ", " 
         (T.Fields.fold 
-          (fun _ t l -> print_term t :: l) r [])^"]"
+          (fun _ t l -> print_term t.rval :: l) r [])^"]"
   | Product (a,b) ->
       Printf.sprintf "(%s,%s)" (print_term a) (print_term b)
   | Ref a ->
@@ -201,14 +205,14 @@ let rec free_vars tm = match tm.term with
       Vars.empty
   | Var x -> Vars.singleton x
   | Ref r | Get r | Field (r,_,_) -> free_vars r
-  | Replace_field (r,_,v) -> Vars.union (free_vars r) (free_vars v)
+  | Replace_field (r,_,v) -> Vars.union (free_vars r) (free_vars v.rval)
   | Is_field (r,_) -> free_vars r
   | Product (a,b) | Seq (a,b) | Set (a,b) ->
       Vars.union (free_vars a) (free_vars b)
   | List l ->
       List.fold_left (fun v t -> Vars.union v (free_vars t)) Vars.empty l
   | Record r ->
-    T.Fields.fold (fun _ t v -> Vars.union v (free_vars t)) r Vars.empty
+      T.Fields.fold (fun _ t v -> Vars.union v (free_vars t.rval)) r Vars.empty
   | App (hd,l) ->
       List.fold_left
         (fun v (_,t) -> Vars.union v (free_vars t))
@@ -262,10 +266,10 @@ let rec check_unused ~lib tm =
     | Product (a,b) | Set (a,b) -> check (check v a) b
     | Seq (a,b) -> check ~toplevel (check v a) b
     | List l -> List.fold_left check v l
-    | Record r -> T.Fields.fold (fun _ t v -> check v t) r v
+    | Record r -> T.Fields.fold (fun _ t v -> check v t.rval) r v
     | Replace_field (r,_,e) ->
-      let v = check v r in
-      check v e
+        let v = check v r in
+          check v e.rval
     | App (hd,l) ->
         let v = check v hd in
           List.fold_left (fun v (lbl,t) -> check v t) v l
@@ -343,7 +347,10 @@ let rec map_types f (gen:'a list) tm = match tm.term with
         term = List (List.map (map_types f gen) l) }
   | Record r ->
       { t = f gen tm.t ;
-        term = Record (T.Fields.map (fun t -> map_types f gen t) r) }
+        term = Record (T.Fields.map
+                         (fun t ->
+                            { t with rval = map_types f (t.rgen@gen) t.rval })
+                         r) }
   | Field (r,x,o) ->
       { t = f gen tm.t ;
         term = Field (map_types f gen r, x, 
@@ -353,7 +360,8 @@ let rec map_types f (gen:'a list) tm = match tm.term with
         term = Is_field (map_types f gen r,x) }
   | Replace_field (r,x,v) ->
       { t = f gen tm.t ;
-        term = Replace_field (map_types f gen r, x, map_types f gen v) }
+        term = Replace_field (map_types f gen r, x,
+                              { v with rval = map_types f (v.rgen@gen) v.rval }) }
   | App (hd,l) ->
       { t = f gen tm.t ;
         term = App (map_types f gen hd,
@@ -379,7 +387,10 @@ let rec fold_types f gen x tm = match tm.term with
   | List l ->
       List.fold_left (fun x tm -> fold_types f gen x tm) (f gen x tm.t) l
   | Record r ->
-      T.Fields.fold (fun _ tm x -> fold_types f gen x tm) r (f gen x tm.t)
+      T.Fields.fold
+        (fun _ tm x -> fold_types f (tm.rgen@gen) x tm.rval)
+        r
+        (f gen x tm.t)
   (* In the next cases, don't care about tm.t, nothing "new" in it. *)
   | Ref r | Get r | Is_field (r,_) ->
       fold_types f gen x r
@@ -389,8 +400,8 @@ let rec fold_types f gen x tm = match tm.term with
       else
        fold_types f gen x r
   | Replace_field (r,_,v) ->
-    let x = fold_types f gen x r in
-    fold_types f gen x v
+      let x = fold_types f gen x r in
+        fold_types f (v.rgen@gen) x (v.rval)
   | Product (a,b) | Seq (a,b) | Set (a,b) ->
       fold_types f gen (fold_types f gen x a) b
   | App (tm,l) ->
@@ -550,7 +561,7 @@ let rec value_restriction t = match t.term with
   | Float _ | Int _ | Is_field _ -> true
   | Record r -> 
       let r = Lang_types.list_of_fields r in
-      List.for_all (fun (_,v) -> value_restriction v) r
+      List.for_all (fun (_,v) -> value_restriction v.rval) r
   | List l -> List.for_all value_restriction l
   | Product (a,b) -> value_restriction a && value_restriction b
   | _ -> false
@@ -646,9 +657,11 @@ let rec check ?(print_toplevel=false) ~level ~env e =
   | Record r ->
       let fields_t =
         T.Fields.mapi
-          (fun field term ->
-             check ~level ~env term ;
-             generalize ~level term, false)
+          (fun field field ->
+             check ~level ~env field.rval ;
+             let scheme = generalize ~level field.rval in
+               field.rgen <- fst scheme ;
+               scheme, false)
           r
       in
         e.t >: record_t ~level ~row:false fields_t
@@ -682,7 +695,7 @@ let rec check ?(print_toplevel=false) ~level ~env e =
               e.t >: v
       end
   | Replace_field (r,x,v) ->
-      check ~level ~env v;
+      check ~level ~env v.rval;
       check ~level ~env r;
       r.t <: record_t ~level ~row:true T.Fields.empty;
       let r =
@@ -690,8 +703,10 @@ let rec check ?(print_toplevel=false) ~level ~env e =
           | T.Record r -> r
           | _ -> assert false
       in
-      let fields = 
-        T.Fields.add x (generalize ~level v,false) r.T.fields 
+      let fields =
+        let scheme = generalize ~level v.rval in
+          v.rgen <- fst scheme ;
+          T.Fields.add x (scheme, false) r.T.fields
       in
       let rt = mk (T.Record {T.fields  = fields;
                                row     = r.T.row;
@@ -919,7 +934,7 @@ let rec eval ~env tm =
       | List l -> mk (V.List (List.map (eval ~env) l))
       | Product (a,b) -> mk (V.Product (eval ~env a, eval ~env b))
       | Record r -> 
-          mk (V.Record (T.Fields.map (fun v -> eval ~env v) r))
+          mk (V.Record (T.Fields.map (fun v -> eval ~env v.rval) r))
       | Field (r,x,o) ->
         let v =
           match (eval ~env r).V.value with
@@ -964,7 +979,7 @@ let rec eval ~env tm =
             | _ -> assert false
         in
         let r = 
-          T.Fields.add x (eval ~env v) r 
+          T.Fields.add x (eval ~env v.rval) r
         in
         mk (V.Record r)
       | Ref v -> mk (V.Ref (ref (eval ~env v)))
