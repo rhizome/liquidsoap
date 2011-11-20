@@ -205,7 +205,7 @@
 %token OGG FLAC VORBIS VORBIS_CBR VORBIS_ABR THEORA DIRAC SPEEX
 %token WAV VOAACENC AACPLUS MP3 MP3_VBR MP3_ABR EXTERNAL
 %token EOF
-%token FIELD WITH
+%token FIELD WITH OPEN
 %token BEGIN END GETS TILD
 %token <Doc.item * (string*string) list> DEF
 %token IF THEN ELSE ELSIF
@@ -286,6 +286,8 @@ exprs:
                                  mk (Let { doc=doc ; var=name ;
                                            gen = [] ; def=def ;
                                            body = $3 }) }
+  | OPEN LPAR expr RPAR exprs { mk (Open ($3,$5)) }
+
 cexprs:
   | cexpr s                  { $1 }
   | cexpr cexprs             { mk (Seq ($1,$2)) }
@@ -302,6 +304,7 @@ cexprs:
                                  mk (Let { doc=doc ; var=name ;
                                            gen = [] ; def=def ;
                                            body = $3 }) }
+  | OPEN LPAR expr RPAR exprs { mk (Open ($3,$5)) }
 
 /* General expressions.
  * The only difference with cexpr is the ability to start with an unary MINUS.

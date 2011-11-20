@@ -62,8 +62,8 @@ val dummy : t
 val pp_type : Format.formatter -> t -> unit
 val pp_type_generalized : cvar list -> Format.formatter -> t -> unit
 val pp_scheme : Format.formatter -> scheme -> unit
-val print : ?generalized:((int*constraints) list) -> t -> string
-val doc_of_type : generalized:((int*constraints) list) -> t -> Doc.item
+val print : ?generalized:(cvar list) -> t -> string
+val doc_of_type : generalized:(cvar list) -> t -> Doc.item
 
 exception Occur_check of t*t
 val occur_check : t -> t -> unit
@@ -71,9 +71,9 @@ val occur_check : t -> t -> unit
 exception Unsatisfied_constraint of constr*t
 val bind : t -> t -> unit
 val deref : t -> t
-val filter_vars : (t -> bool) -> t -> (int*constraints) list
-val copy_with : ((int*constraints)*t) list -> t -> t
-val instantiate : level:int -> generalized:((int*constraints) list) -> t -> t
+val filter_vars : (t -> bool) -> t -> cvar list
+val copy_with : (cvar*t) list -> t -> t
+val instantiate : level:int -> generalized:(cvar list) -> t -> t
 
 type explanation
 exception Type_Error of explanation
