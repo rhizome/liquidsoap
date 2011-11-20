@@ -534,10 +534,16 @@ end
 let builtins : (T.cvar list * V.value) Plug.plug
   = Plug.create ~duplicates:false ~doc:"scripting values" "scripting values"
 
-(* {1 Type checking/inference} *)
-
-let (<:) = T.(<:)
-let (>:) = T.(>:)
+(** {1 Generalization}
+  *
+  * We perform ML-style generalization: when a value is pure enough, we
+  * generalize (universally quantify) variables that have been introduced
+  * during the typing of that variable (do not generalize variables that
+  * belong to an outer term).
+  *
+  * Because we maintain types during evaluation, it does not suffice to
+  * generalize the type of the whole term, but inner types need to be considered
+  * as well, so that their variables are taken fresh in each run. *)
 
 let rec value_restriction t = match t.term with
   | Var _ | Fun _ | Bool _ 
@@ -549,23 +555,29 @@ let rec value_restriction t = match t.term with
   | Product (a,b) -> value_restriction a && value_restriction b
   | _ -> false
 
-let value_generalize ~level v =
+let generalize ~level v =
   if value_restriction v then
     let f gen x t =
-       let x' =
-          T.filter_vars
-             (function
-                 | { T. descr = T.EVar (i,c) ; level = l } ->
-                     not (List.mem_assoc i x) &&
-                     not (List.mem_assoc i gen) && l >= level
-                 | _ -> assert false)
-             t
-       in
-       x'@x
-     in
-     fold_types f [] [] v
-    else
-     []
+      let x' =
+        T.filter_vars
+          (function
+             | { T.descr = T.EVar (i,c) ; level = l } ->
+                 not (List.mem_assoc i x) &&
+                 not (List.mem_assoc i gen) &&
+                 l >= level
+             | _ -> assert false)
+          t
+      in
+        x'@x
+    in
+      fold_types f [] [] v, v.t
+  else
+    [], v.t
+
+(* {1 Type checking/inference} *)
+
+let (<:) = T.(<:)
+let (>:) = T.(>:)
 
 exception Unbound of T.pos option * string
 exception Ignored of term
@@ -632,14 +644,14 @@ let rec check ?(print_toplevel=false) ~level ~env e =
         e.t >: mk (T.List v) ;
         List.iter (fun item -> item.t <: v) l
   | Record r ->
-      (* TODO
-       *   - need value restriction before generalization
-       *   - could do everything in one T.Fields.map pass      *)
-      T.Fields.iter (fun  _ tm -> check ~level ~env tm) r ;
-      let tr = T.Fields.map (fun _ -> T.fresh_evar ~level ~pos) r in
-      T.Fields.iter (fun x item -> item.t <: T.Fields.find x tr) r;
-      let tr = T.Fields.map (fun v -> T.generalize v,false) tr in
-      e.t >: record_t ~level ~row:false tr
+      let fields_t =
+        T.Fields.mapi
+          (fun field term ->
+             check ~level ~env term ;
+             generalize ~level term, false)
+          r
+      in
+        e.t >: record_t ~level ~row:false fields_t
   | Is_field (r,x) -> 
       check ~level ~env r ;
       let v = T.fresh_evar ~level ~pos in
@@ -679,7 +691,7 @@ let rec check ?(print_toplevel=false) ~level ~env e =
           | _ -> assert false
       in
       let fields = 
-        T.Fields.add x (T.generalize v.t,false) r.T.fields 
+        T.Fields.add x (generalize ~level v,false) r.T.fields 
       in
       let rt = mk (T.Record {T.fields  = fields;
                                row     = r.T.row;
@@ -794,15 +806,15 @@ let rec check ?(print_toplevel=false) ~level ~env e =
             var (T.deref e.t).T.level (T.print orig) (T.print e.t)
   | Let ({gen=gen; var=name; def=def; body=body} as l) ->
       check ~level:level ~env def ;
-      let generalized = value_generalize ~level def in
-      let env = (name,(generalized,def.t))::env in
-        l.gen <- generalized ;
+      let scheme = generalize ~level def in
+      let env = (name,scheme)::env in
+        l.gen <- fst scheme ;
         if print_toplevel then
           (add_task (fun () ->
              Format.printf "@[<2>%s :@ %a@]@."
                (let l = String.length name and max = 5 in
                   if l >= max then name else name ^ String.make (max-l) ' ')
-               (T.pp_type_generalized generalized) def.t)) ;
+               T.pp_scheme scheme)) ;
         check ~print_toplevel ~level:(level+1) ~env body ;
         e.t >: body.t
 
@@ -1128,9 +1140,12 @@ let rec eval_toplevel ?(interactive=false) t =
         let v = eval ~env:builtins#get_all t in
           if interactive && t.term <> Unit then
            begin
-            let generalized = value_generalize ~level:0 t in
+            (* TODO level 0 may be abusive because of previous let-in
+             *   also the level argument of generalize may just be
+             *   t.level *)
+            let scheme = generalize ~level:0 t in
             Format.printf "- : %a = %s@."
-              (T.pp_type_generalized generalized) v.V.t
+              T.pp_scheme scheme
               (V.print_value v) 
            end ;
           v

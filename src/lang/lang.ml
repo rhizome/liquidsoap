@@ -233,9 +233,9 @@ let product a b = mk (product_t a.t b.t) (Product (a,b))
 let list ~t l = mk (list_t t) (List l)
 
 let record ?row ?opt_row f =
-  (* TODO Value restriction for generalization. Is x.t.level meaningful?
-   *  And test this! *)
-  let lt = T.Fields.map (fun x -> T.generalize x.t,false) f in
+  (* TODO should we generalize anything?
+   *   this would require a value_restriction for values, not terms *)
+  let lt = T.Fields.map (fun x -> ([],x.t),false) f in
   mk (record_t ?row ?opt_row lt) (Record f)
 
 let source s =
@@ -322,12 +322,14 @@ let to_doc category flags main_doc proto return_t =
     item
 
 let register_builtin ~doc name v =
+  (* TODO this is generalizing some evars twice,
+   *   we first need to make filter_vars ignore uvars *)
   let names = Pcre.split ~pat:"\\." name in
-  let (g,_) = T.generalize v.t in
   match names with
     | [] -> assert false
     | name :: [] ->
-        Term.builtins#register ~doc name (g,v)
+        let g = T.filter_vars (fun _ -> true) v.t in
+          Term.builtins#register ~doc name (g,v)
     | name :: names ->
         let base = 
           match Term.builtins#get name with
@@ -351,6 +353,7 @@ let register_builtin ~doc name v =
           match names with
             | [] -> assert false
             | name::[] ->
+                let g = T.filter_vars (fun _ -> true) v.t in
                 { t = { cur.t with 
                           T.descr = 
                             T.Record { t with 
@@ -376,7 +379,7 @@ let register_builtin ~doc name v =
                    aux { t     = t';
                          value = v' } names
                  in
-                 let (g,_) = T.generalize ret.t in
+                 let g = T.filter_vars (fun _ -> true) ret.t in
                  { t = { cur.t with
                           T.descr = 
                             T.Record { t with 

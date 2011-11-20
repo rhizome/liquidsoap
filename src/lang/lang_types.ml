@@ -148,7 +148,16 @@ let print_constr = function
   | Arity_any -> "an arity"
   | Arity_fixed -> "a fixed arity"
 
-(** Types *)
+(** {1 Types}
+  *
+  * We do not distinguish universal and existential variables. Type schemes
+  * are simply given by a type together with a list of variables that are
+  * generalized -- and those variables must only occur inside that type.
+  *
+  * This is simple and useful because in any case we need to distinguish
+  * two 'a variables bound at different places. Indeed, we might instantiate
+  * one in a term where the second is bound, and we don't want to
+  * merge the two when going under the binder. *)
 
 type variance = Covariant | Contravariant | Invariant
 
@@ -703,6 +712,7 @@ exception Type_Error of explanation
 
 let pp_type f t = print_repr f (repr t)
 let pp_type_generalized generalized f t = print_repr f (repr ~generalized t)
+let pp_scheme f (generalized,t) = print_repr f (repr ~generalized t)
 
 let print ?generalized t : string =
   print_repr Format.str_formatter (repr ?generalized t) ;
@@ -1038,24 +1048,6 @@ let (>:) a b =
 let (<:) a b =
   try a <: b with Error (x,y) -> raise (Type_Error (false,a,b,x,y))
 
-(** {1 Type generalization and instantiation}
-  *
-  * We don't have type schemes per se, but we compute generalizable variables
-  * and keep track of them in the AST.
-  * This is simple and useful because in any case we need to distinguish
-  * two 'a variables bound at different places. Indeed, we might instantiate
-  * one in a term where the second is bound, and we don't want to
-  * merge the two when going under the binder.
-  *
-  * When generalizing we need to know what can be generalized in the outermost
-  * type but also in the inner types of the term forming a let-definition.
-  * Indeed those variables will have to be instantiated by fresh ones for
-  * every instance.
-  *
-  * If the value restriction applies, then we have some (fun (...) -> ...)
-  * and any type variable of higher level can be generalized, whether it's
-  * in the outermost type or not. *)
-
 let filter_vars f t =
   let rec aux ?(generalized=[]) l t =
     let aux ?(generalized=generalized) l t = aux ~generalized l t in
@@ -1082,22 +1074,6 @@ let filter_vars f t =
         r.fields (f (f l r.opt_row) r.row)
   in
   aux [] t
-
-(** Return a list of generalizable variables in a type.
-    * This is performed after type inference on the left-hand side
-    * of a let-in, with [level] being the level of that let-in.
-    * Uses the simple method of ML, to be associated with a value restriction. *)
-let generalizable ?level t =
-  let level =
-    match level with
-      | Some l -> l
-      | None -> t.level
-  in
-  filter_vars (fun t -> t.level >= level) t
-
-let generalize ?level t =
-  let g = generalizable ?level t in
-  g,t
 
 (** Copy a term, substituting some EVars as indicated by a list
   * of associations. Other EVars are not copied, so sharing is

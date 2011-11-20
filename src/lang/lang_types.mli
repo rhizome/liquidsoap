@@ -56,13 +56,12 @@ and descr =
 and cvar = int * constraints
 and scheme = cvar list * t
 
-val merge_record : (scheme, t) record -> (scheme, t) record
-
 val make : ?pos:pos option -> ?level:int -> descr -> t
 val dummy : t
 
 val pp_type : Format.formatter -> t -> unit
 val pp_type_generalized : cvar list -> Format.formatter -> t -> unit
+val pp_scheme : Format.formatter -> scheme -> unit
 val print : ?generalized:((int*constraints) list) -> t -> string
 val doc_of_type : generalized:((int*constraints) list) -> t -> Doc.item
 
@@ -72,11 +71,9 @@ val occur_check : t -> t -> unit
 exception Unsatisfied_constraint of constr*t
 val bind : t -> t -> unit
 val deref : t -> t
-val filter_vars : (t -> bool) -> t -> cvar list
+val filter_vars : (t -> bool) -> t -> (int*constraints) list
 val copy_with : ((int*constraints)*t) list -> t -> t
 val instantiate : level:int -> generalized:((int*constraints) list) -> t -> t
-val generalizable : ?level:int -> t -> cvar list
-val generalize : ?level:int -> t -> scheme
 
 type explanation
 exception Type_Error of explanation
@@ -86,4 +83,6 @@ val ( >: ) : t -> t -> unit
 
 val fresh : constraints:constraints -> level:int -> pos:pos option -> t
 val fresh_evar : level:int -> pos:pos option -> t
+
 val record : level:int -> row:bool -> opt_row:bool -> (scheme*bool) Fields.t -> t
+val merge_record : (scheme, t) record -> (scheme, t) record
