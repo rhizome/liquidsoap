@@ -327,9 +327,9 @@ expr:
   | list                             { mk (List $1) }
   | record                           { mk (Record $1) }
   | expr FIELD VAR                   { mk (Field ($1, $3, None)) }
-  | QMARK LPAR RECORD_FIELD   GETS expr RPAR
+  | QMARK LPAR RECORD_FIELD GETS expr RPAR
                                      { deep_field ~opt:$5 $3 }
-  | RECORD_FIELD QMARK               { is_deep_field $1 }
+  | QMARK RECORD_FIELD               { is_deep_field $2 }
   | RECORD_FIELD                     { deep_field $1 }
   | LBRA expr WITH inner_record RBRA { replace_fields $2 $4 }
   | REF expr                         { mk (Ref $2) }
@@ -422,7 +422,7 @@ cexpr:
   | cexpr FIELD VAR                  { mk (Field ($1, $3, None)) }
   | QMARK LPAR RECORD_FIELD GETS expr RPAR
                                      { deep_field ~opt:$5 $3 }
-  | RECORD_FIELD QMARK               { is_deep_field $1 }
+  | QMARK RECORD_FIELD               { is_deep_field $2 }
   | RECORD_FIELD                     { deep_field $1 }
   | LBRA expr WITH inner_record RBRA { replace_fields $2 $4 }
   | REF expr                         { mk (Ref $2) }
