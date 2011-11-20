@@ -523,9 +523,6 @@ binding:
         $1,var,body
     }
 
-fields:
-  | { [] }
-  | FIELD VAR fields { $2::$3 }
 var_fields_par:
   | VARLPAR { $1,[] }
   | VAR fields_par { $1,$2 }
