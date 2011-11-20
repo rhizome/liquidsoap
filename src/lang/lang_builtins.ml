@@ -1590,15 +1590,16 @@ let rec to_json_compact v =
                   (List.map to_json_compact l))
         end
     | Lang.Record r ->
-      let r = 
-        Lang_types.Fields.fold 
-          (fun x v l -> 
-            Printf.sprintf "\"%s\":%s" x (to_json_compact v)::l) 
-          r [] 
-      in
-      Printf.sprintf "{%s}" (String.concat "," r)
+        let r = 
+          Lang_types.Fields.fold 
+            (fun x v l -> 
+              Printf.sprintf "\"%s\":%s"
+                x (to_json_compact v.Lang.v_value)::l) 
+            r [] 
+        in
+          Printf.sprintf "{%s}" (String.concat "," r)
     | Lang.Product (p,q) -> 
-       Printf.sprintf "[%s,%s]"  (to_json_compact p) (to_json_compact q)
+        Printf.sprintf "[%s,%s]"  (to_json_compact p) (to_json_compact q)
     | Lang.Source _ -> "\"<source>\""
     | Lang.Ref v -> Printf.sprintf  "{\"reference\":%s}" (to_json_compact !v)
     | Lang.Encoder e -> print_s (Encoder.string_of_format e)

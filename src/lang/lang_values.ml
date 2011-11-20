@@ -426,6 +426,7 @@ let rec fold_types f gen x tm = match tm.term with
 module V =
 struct
   type value = { mutable t : T.t ; value : in_value }
+  and gvalue = { v_gen : T.cvar list ; v_value : value }
   and full_env = (string * ((int*T.constraints)list*value)) list
   and in_value =
     | Unit
@@ -437,7 +438,7 @@ struct
     | Request of Request.t
     | Encoder of Encoder.format
     | List    of value list
-    | Record  of value T.Fields.t
+    | Record  of gvalue T.Fields.t
     | Product of value * value
     | Ref     of value ref
     (** The first environment contains the parameters already passed
@@ -464,10 +465,14 @@ struct
     | List l ->
         "["^(String.concat ", " (List.map print_value l))^"]"
     | Record r ->
-        "["^(String.concat 
-               ", " 
-               (T.Fields.fold (fun x v l -> (x ^ " = " ^ print_value v) :: l) 
-               r []))^"]"
+        let s =
+          String.concat 
+            ", " 
+            (T.Fields.fold
+               (fun x v l -> (x ^ " = " ^ print_value v.v_value) :: l) 
+               r [])
+        in
+          "["^ s ^ "]"
     | Ref a ->
         Printf.sprintf "ref(%s)" (print_value !a)
     | Product (a,b) ->
@@ -503,7 +508,12 @@ struct
           value = List (List.map (map_types f gen) l) }
     | Record r ->
         { t = f gen v.t ;
-          value = Record (T.Fields.map (fun v -> map_types f gen v) r) }
+          value =
+            Record
+              (T.Fields.map
+                 (fun v ->
+                    { v with v_value = map_types f (v.v_gen@gen) v.v_value })
+                 r) }
     | Fun (p,applied,env,tm) ->
         let aux = function
           | lbl, var, None -> lbl, var, None
@@ -566,8 +576,9 @@ let rec value_restriction t = match t.term with
   | Product (a,b) -> value_restriction a && value_restriction b
   | _ -> false
 
-let generalize ~level v =
+let generalize v =
   if value_restriction v then
+    let level = v.t.T.level in
     let f gen x t =
       let x' =
         T.filter_vars
@@ -659,7 +670,7 @@ let rec check ?(print_toplevel=false) ~level ~env e =
         T.Fields.mapi
           (fun field field ->
              check ~level ~env field.rval ;
-             let scheme = generalize ~level field.rval in
+             let scheme = generalize field.rval in
                field.rgen <- fst scheme ;
                scheme, false)
           r
@@ -704,7 +715,7 @@ let rec check ?(print_toplevel=false) ~level ~env e =
           | _ -> assert false
       in
       let fields =
-        let scheme = generalize ~level v.rval in
+        let scheme = generalize v.rval in
           v.rgen <- fst scheme ;
           T.Fields.add x (scheme, false) r.T.fields
       in
@@ -821,7 +832,7 @@ let rec check ?(print_toplevel=false) ~level ~env e =
             var (T.deref e.t).T.level (T.print orig) (T.print e.t)
   | Let ({gen=gen; var=name; def=def; body=body} as l) ->
       check ~level:level ~env def ;
-      let scheme = generalize ~level def in
+      let scheme = generalize def in
       let env = (name,scheme)::env in
         l.gen <- fst scheme ;
         if print_toplevel then
@@ -933,31 +944,24 @@ let rec eval ~env tm =
       | Encoder x -> mk (V.Encoder x)
       | List l -> mk (V.List (List.map (eval ~env) l))
       | Product (a,b) -> mk (V.Product (eval ~env a, eval ~env b))
-      | Record r -> 
-          mk (V.Record (T.Fields.map (fun v -> eval ~env v.rval) r))
+      | Record r ->
+          let fields =
+            T.Fields.map
+              (fun v -> { V. v_gen = v.rgen ; v_value = eval ~env v.rval })
+              r
+          in
+            mk (V.Record fields)
       | Field (r,x,o) ->
-        let v =
-          match (eval ~env r).V.value with
+          begin match (eval ~env r).V.value with
             | V.Record r -> 
-                begin
-                 try
-                  T.Fields.find x r
-                 with
-                   | _ -> eval ~env (Utils.get_some o)
+                begin try
+                  let v = T.Fields.find x r in
+                    instantiate ~generalized:v.V.v_gen v.V.v_value
+                with
+                  | _ -> eval ~env (Utils.get_some o)
                 end
             | _ -> assert false
-        in
-        let (g,t),o =
-          match (T.deref r.t).T.descr with
-            | T.Record r ->
-                begin 
-                 try
-                   T.Fields.find x r.T.fields
-                 with _ -> ([],(Utils.get_some o).t),true
-                end
-            | _ -> assert false
-        in
-        instantiate ~generalized:g v
+          end
       | Is_field (r,x) ->
           let r =
             match (eval ~env r).V.value with
@@ -972,16 +976,18 @@ let rec eval ~env tm =
              | Not_found -> mk (V.Bool false)
           end
       | Replace_field (r,x,v) ->
-        let r = eval ~env r in
-        let r =
-          match r.V.value with
-            | V.Record r -> r
-            | _ -> assert false
-        in
-        let r = 
-          T.Fields.add x (eval ~env v.rval) r
-        in
-        mk (V.Record r)
+          let r = eval ~env r in
+          let r =
+            match r.V.value with
+              | V.Record r -> r
+              | _ -> assert false
+          in
+          let field =
+            { V. v_gen = v.rgen ;
+                 v_value = eval ~env v.rval }
+          in
+          let r = T.Fields.add x field r in
+            mk (V.Record r)
       | Ref v -> mk (V.Ref (ref (eval ~env v)))
       | Get r ->
           begin match (eval ~env r).V.value with
@@ -1152,15 +1158,18 @@ let rec eval_toplevel ?(interactive=false) t =
              if v.V.t.T.pos = None then { v with V.t = a.t } else v) ;
         eval_toplevel ~interactive b
     | _ ->
-        let v = eval ~env:builtins#get_all t in
-          if interactive && t.term <> Unit then
-           begin
-            (* TODO level 0 may be abusive because of previous let-in
-             *   also the level argument of generalize may just be
-             *   t.level *)
-            let scheme = generalize ~level:0 t in
+        if interactive && t.term <> Unit then
+          (* A special case when evaluating an expression: we display
+           * a fake generalized type, because metavariables can be confusing.
+           * The scheme has to be extracted before evaluation because
+           * runtime instantiation doesn't insert meaningful levels.
+           * TODO this may be silly: types attached to terms are already
+           *   instantiated (eg. for variables) why do we re-instantiate? *)
+          let scheme = generalize t in
+          let v = eval ~env:builtins#get_all t in
             Format.printf "- : %a = %s@."
               T.pp_scheme scheme
-              (V.print_value v) 
-           end ;
-          v
+              (V.print_value v) ;
+            v
+        else
+          eval ~env:builtins#get_all t

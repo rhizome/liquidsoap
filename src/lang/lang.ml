@@ -236,6 +236,7 @@ let record ?row ?opt_row f =
   (* TODO should we generalize anything?
    *   this would require a value_restriction for values, not terms *)
   let lt = T.Fields.map (fun x -> ([],x.t),false) f in
+  let f = T.Fields.map (fun x -> { v_gen = [] ; v_value = x }) f in
   mk (record_t ?row ?opt_row lt) (Record f)
 
 let source s =
@@ -359,11 +360,13 @@ let register_builtin ~doc name v =
                             T.Record { t with 
                               T.fields = T.Fields.add 
                                            name ((g,v.t),false) t.T.fields }};
-                  value = Record (T.Fields.add name v r) }
+                  value =
+                    Record (T.Fields.add name { v_gen = g ; v_value = v } r) }
             | name::names -> 
                  let v' = 
                    try
-                     (T.Fields.find name r).value
+                     (* TODO disregard v_gen ? *)
+                     (T.Fields.find name r).v_value.value
                    with
                      | Not_found -> Record T.Fields.empty
                  in
@@ -380,12 +383,13 @@ let register_builtin ~doc name v =
                          value = v' } names
                  in
                  let g = T.filter_vars (fun _ -> true) ret.t in
+                 let gret = { v_gen = g ; v_value = ret } in
                  { t = { cur.t with
                           T.descr = 
                             T.Record { t with 
                               T.fields = T.Fields.add 
                                             name ((g,ret.t),false) t.T.fields }};
-                  value = Record (T.Fields.add name ret r) }
+                  value = Record (T.Fields.add name gret r) }
         in
         let v = aux base names in
         let g = T.filter_vars (fun _ -> true) v.t in
@@ -529,7 +533,7 @@ let iter_sources f v =
     | Unit | Bool _ | Int _ | Float _ | String _ | Request _ | Encoder _ -> ()
     | List l -> List.iter iter_value l
     | Record r -> 
-        T.Fields.iter (fun _ a -> iter_value a) r
+        T.Fields.iter (fun _ a -> iter_value a.v_value) r
     | Ref a -> iter_value !a
     | Product (a,b) ->
         iter_value a ; iter_value b
@@ -567,7 +571,7 @@ let to_bool t = match t.value with
   | _ -> assert false
 
 let to_record t = match t.value with
-  | Record l -> l
+  | Record l -> (* TODO l *) assert false
   | _ -> assert false
 
 let to_string t = match t.value with

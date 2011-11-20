@@ -36,28 +36,24 @@ let preprocess tokenizer =
       let rec has_field r = function
         | [] -> true
         | x::xx ->
-          (
-            match r.Lang_values.V.value with
+            begin match r.Lang_values.V.value with
               | Lang_values.V.Record r ->
-                (
-                  try
+                  begin try
                     let r = Lang_types.Fields.find x r in
-                    has_field r xx
+                      has_field r.Lang_values.V.v_value xx
                   with
                     | Not_found -> false
-                )
+                  end
               | _ -> xx = []
-          )
+            end
       in
       (** XXX Less natural meaning than the original one. *)
       if Lang_values.builtins#is_registered r then
         let r = Utils.get_some (Lang_values.builtins#get r) in
-        if has_field (snd r) xx then
-          (
+        if has_field (snd r) xx then begin
             incr state ;
             token lexbuf
-          )
-        else
+        end else
           skip ()
       else
         skip ()

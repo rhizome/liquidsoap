@@ -30,6 +30,7 @@ type t = Lang_types.t
 (** A typed value. *)
 type value = { mutable t : t ; value : in_value }
 and full_env = (string * ((int*Lang_types.constraints) list * value)) list
+and gvalue = { v_gen : Lang_types.cvar list ; v_value : value }
 and in_value =
   | Unit
   | Bool    of bool
@@ -40,7 +41,7 @@ and in_value =
   | Request of Request.t
   | Encoder of Encoder.format
   | List    of value list
-  | Record  of value Lang_types.Fields.t
+  | Record  of gvalue Lang_types.Fields.t
   | Product of value * value
   | Ref     of value ref
   | Fun     of (string * string * value option) list *

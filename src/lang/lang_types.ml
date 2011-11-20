@@ -237,14 +237,91 @@ let rec merge_record r =
   { fields  = opt_fields @@ fields @@ r.fields;
     row     = row;
     opt_row = opt_row }
-  and
+
 (** Dereferencing gives you the meaning of a term,
   * going through links created by instantiations.
   * One should (almost) never work on a non-dereferenced type. *)
-  deref t = match t.descr with
+and deref t = match t.descr with
   | Link x -> deref x
   | Record r -> { t with descr = Record (merge_record r) }
   | _ -> t
+
+let fresh_evar =
+  let fresh_id =
+    let c = ref 0 in
+      fun () -> incr c ; !c
+  in
+  let f ~constraints ~level ~pos =
+    { pos = pos ; level = level ; descr = EVar (fresh_id (),constraints) }
+  in
+    f
+
+let record ~level ~row ~opt_row fields =
+  let fresh_row row = 
+    if row then 
+      Some (fresh_evar ~level ~constraints:[] ~pos:None) 
+    else
+      None 
+  in
+  make ~level (Record { fields  = fields;
+                        row     = fresh_row row;
+                        opt_row = fresh_row opt_row })
+
+(** Copy a term, substituting some EVars as indicated by a list
+  * of associations. Other EVars are not copied, so sharing is
+  * preserved. *)
+let copy_with subst t =
+  let rec aux t =
+    let cp x = { t with descr = x } in
+      match t.descr with
+        | EVar (i,c) ->
+            begin try
+              snd (List.find (fun ((j,_),_) -> i=j) subst)
+            with
+              | Not_found -> t
+            end
+        | Constr c ->
+            let params = List.map (fun (v,t) -> v, aux t) c.params in
+              cp (Constr { c with params = params })
+        | Ground _ -> cp t.descr
+        | List t -> cp (List (aux t))
+        | Product (a,b) -> cp (Product (aux a, aux b))
+        | Zero | Variable -> cp t.descr
+        | Succ t -> cp (Succ (aux t))
+        | Arrow (p,t) ->
+            cp (Arrow (List.map (fun (o,l,t) -> (o,l,aux t)) p, aux t))
+        | Link t ->
+            (* Keep links to preserve rich position information,
+             * and to make it possible to check if the application left
+             * the type unchanged. *)
+            cp (Link (aux t))
+        | Record r ->
+          let r = merge_record r in
+          (* TODO: hide variables from g in the substitution! *)
+          let fields = 
+            Fields.map (fun ((g,t),o) -> (g, aux t),o) r.fields 
+          in
+          cp (Record {fields = fields;
+                      row    = Utils.may aux r.row;
+                      opt_row = Utils.may aux r.opt_row})
+  in
+    aux t
+
+(** Instantiate a type scheme, given as a type together with a list
+  * of generalized variables.
+  * Fresh variables are created with the given (current) level,
+  * and attached to the appropriate constraints.
+  * This erases position information, since they usually become
+  * irrelevant. *)
+let instantiate ~level ~generalized =
+  let subst =
+    List.map
+      (fun (i,c) -> (i,c), fresh_evar ~level ~constraints:c ~pos:None)
+      generalized
+  in
+    fun t -> copy_with subst t
+
+(** {1 Printing} *)
 
 (** Given a strictly positive integer, generate a name in [a-z]+:
   * a, b, ... z, aa, ab, ... az, ba, ... *)
@@ -298,10 +375,11 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
       let constr_symbols,c = split_constr c in
       let rec index n = function
         | v::tl ->
-          if fst v = i then
-            Printf.sprintf "'%s%s" constr_symbols (name n)
-          else
-            index (n+1) tl
+            if fst v = i then
+              let name = Printf.sprintf "'%s%s" constr_symbols (name n) in
+                if debug then name ^ Printf.sprintf ":%d" i else name
+            else
+              index (n+1) tl
         | [] -> assert false
       in
       index 1 (List.rev generalized)
@@ -539,27 +617,6 @@ let print_repr f t =
     end ;
     Format.fprintf f "@]"
 
-let fresh_evar =
-  let fresh_id =
-    let c = ref 0 in
-      fun () -> incr c ; !c
-  in
-  let f ~constraints ~level ~pos =
-    { pos = pos ; level = level ; descr = EVar (fresh_id (),constraints) }
-  in
-    f
-
-let record ~level ~row ~opt_row fields =
-  let fresh_row row = 
-    if row then 
-      Some (fresh_evar ~level ~constraints:[] ~pos:None) 
-    else
-      None 
-  in
-  make ~level (Record { fields  = fields;
-                        row     = fresh_row row;
-                        opt_row = fresh_row opt_row })
-
 (** {1 Assignation} *)
 
 (** These two exceptions can be raised when attempting to assign a variable. *)
@@ -623,6 +680,7 @@ let rec bind a0 b =
                                | _ -> raise error
                              end
                          | EVar (j,c) ->
+                             (* TODO don't do this if ?j is an evar *)
                              if List.mem (Getter g) c then () else
                                b.descr <- EVar (j,(Getter g)::c)
                          | _ -> raise error
@@ -779,9 +837,16 @@ let constr_sub x y =
 
 (** Ensure that a<:b, perform unification if needed.
   * In case of error, generate an explanation. *)
-let rec (<:) a b =
-  if debug then Printf.eprintf "%s <: %s\n%!" (print a) (print b) ;
-  match (deref a).descr, (deref b).descr with
+let rec (<:) ~generalized a b =
+  if debug then
+    Printf.eprintf "%s. %s <: %s\n%!"
+      (String.concat ","
+         (List.map (fun (i,_) -> string_of_int i) generalized))
+      (print a) (print b) ;
+  let (<:) ?(generalized=generalized) a b = (<:) ~generalized a b in
+  let da = deref a in let db = deref b in
+  if da == db then () else
+  match da.descr, db.descr with
     | Constr c1, Constr c2 when constr_sub c1.name c2.name ->
         let rec aux pre p1 p2 =
           match p1,p2 with
@@ -840,15 +905,15 @@ let rec (<:) a b =
                                   opt_row  = Utils.may repr r2.opt_row }))
         in
         let fields, opt_fields =
-          (* TODO: we could drop some generalized variables that are not used anymore. *)
           Fields.fold
             (fun x (((g2,t2),o2) as field2) (cur,opt_cur) ->
               try
-               let (_,t1),o1 = Fields.find x r1.fields in
+               let (g1,t1),o1 = Fields.find x r1.fields in
                begin
                 try
-                  (* TODO: g1, g2 should be used here! BUG *) 
-                  t1 <: t2;
+                  (* TODO which level? does it matter? *)
+                  let t1 = instantiate ~generalized:g1 ~level:0 t1 in
+                  (<:) ~generalized:(g2@generalized) t1 t2 ;
                   (* If field is already defined as optional,
                    * raise Not_found and let it see if it can
                    * override it. *)
@@ -862,7 +927,7 @@ let rec (<:) a b =
                   if o2 then
                     cur, Fields.add x field2 opt_cur
                   else
-                    Fields.add x field2 cur, opt_cur) 
+                    Fields.add x field2 cur, opt_cur)
             r2.fields (Fields.empty,Fields.empty)
         in
         let add_fields ~opt row fields =
@@ -1016,14 +1081,14 @@ let rec (<:) a b =
         begin try a' <: b' with
           | Error (a',b') -> raise (Error (`Succ a', `Succ b'))
         end
-    | EVar _, _ ->
+    | EVar (i,c), _ when not (List.mem (i,c) generalized) ->
         begin try bind a b with
           | Occur_check _ | Unsatisfied_constraint _ ->
               (* Can't do more concise than a full representation,
                * as the problem isn't local. *)
               raise (Error (repr a,repr b))
         end
-    | _, EVar _ ->
+    | _, EVar (i,c) when not (List.mem (i,c) generalized) ->
         begin try bind b a with
           | Occur_check _ | Unsatisfied_constraint _ ->
               raise (Error (repr a,repr b))
@@ -1043,10 +1108,10 @@ let rec (<:) a b =
           raise (Error (a,b))
 
 let (>:) a b =
-  try b <: a with Error (y,x) -> raise (Type_Error (true,b,a,y,x))
+  try (<:) ~generalized:[] b a with Error (y,x) -> raise (Type_Error (true,b,a,y,x))
 
 let (<:) a b =
-  try a <: b with Error (x,y) -> raise (Type_Error (false,a,b,x,y))
+  try (<:) ~generalized:[] a b with Error (x,y) -> raise (Type_Error (false,a,b,x,y))
 
 let filter_vars f t =
   let rec aux ?(generalized=[]) l t =
@@ -1069,67 +1134,14 @@ let filter_vars f t =
           | Some row -> aux l row
           | None -> l
       in
+      (* TODO filter the type of the default value *)
       Fields.fold 
         (fun x ((g,t),_) l -> aux ~generalized:(g@generalized) l t)
         r.fields (f (f l r.opt_row) r.row)
   in
   aux [] t
 
-(** Copy a term, substituting some EVars as indicated by a list
-  * of associations. Other EVars are not copied, so sharing is
-  * preserved. *)
-let copy_with subst t =
-  let rec aux t =
-    let cp x = { t with descr = x } in
-      match t.descr with
-        | EVar (i,c) ->
-            begin try
-              snd (List.find (fun ((j,_),_) -> i=j) subst)
-            with
-              | Not_found -> t
-            end
-        | Constr c ->
-            let params = List.map (fun (v,t) -> v, aux t) c.params in
-              cp (Constr { c with params = params })
-        | Ground _ -> cp t.descr
-        | List t -> cp (List (aux t))
-        | Product (a,b) -> cp (Product (aux a, aux b))
-        | Zero | Variable -> cp t.descr
-        | Succ t -> cp (Succ (aux t))
-        | Arrow (p,t) ->
-            cp (Arrow (List.map (fun (o,l,t) -> (o,l,aux t)) p, aux t))
-        | Link t ->
-            (* Keep links to preserve rich position information,
-             * and to make it possible to check if the application left
-             * the type unchanged. *)
-            cp (Link (aux t))
-        | Record r ->
-          let r = merge_record r in
-          (* TODO: hide variables from g in the substitution! *)
-          let fields = 
-            Fields.map (fun ((g,t),o) -> (g, aux t),o) r.fields 
-          in
-          cp (Record {fields = fields;
-                      row    = Utils.may aux r.row;
-                      opt_row = Utils.may aux r.opt_row})
-  in
-    aux t
-
 module M = Map.Make(struct type t = int let compare = compare end)
-
-(** Instantiate a type scheme, given as a type together with a list
-  * of generalized variables.
-  * Fresh variables are created with the given (current) level,
-  * and attached to the appropriate constraints.
-  * This erases position information, since they usually become
-  * irrelevant. *)
-let instantiate ~level ~generalized =
-  let subst =
-    List.map
-      (fun (i,c) -> (i,c), fresh_evar ~level ~constraints:c ~pos:None)
-      generalized
-  in
-    fun t -> copy_with subst t
 
 (** Simplified version of existential variable generation,
   * without constraints. This is used when parsing to annotate
