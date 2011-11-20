@@ -321,7 +321,9 @@ expr:
   | STRING                           { mk (String $1) }
   | list                             { mk (List $1) }
   | record                           { mk (Record $1) }
-  | QMARK LPAR RECORD_FIELD   GETS expr RPAR  { deep_field ~opt:$5 $3 }
+  | expr FIELD VAR                   { mk (Field ($1, $3, None)) }
+  | QMARK LPAR RECORD_FIELD   GETS expr RPAR
+                                     { deep_field ~opt:$5 $3 }
   | RECORD_FIELD QMARK               { is_deep_field $1 }
   | RECORD_FIELD                     { deep_field $1 }
   | LBRA expr WITH inner_record RBRA { replace_fields $2 $4 }
@@ -412,7 +414,9 @@ cexpr:
   | STRING                           { mk (String $1) }
   | list                             { mk (List $1) }
   | record                           { mk (Record $1) }
-  | QMARK LPAR RECORD_FIELD    GETS expr RPAR  { deep_field ~opt:$5 $3 }
+  | cexpr FIELD VAR                  { mk (Field ($1, $3, None)) }
+  | QMARK LPAR RECORD_FIELD GETS expr RPAR
+                                     { deep_field ~opt:$5 $3 }
   | RECORD_FIELD QMARK               { is_deep_field $1 }
   | RECORD_FIELD                     { deep_field $1 }
   | LBRA expr WITH inner_record RBRA { replace_fields $2 $4 }
@@ -424,7 +428,7 @@ cexpr:
   | MP3_ABR app_opt                  { mk_mp3_abr $2 }
   | FLAC app_opt                     { mk_flac $2 }
   | AACPLUS app_opt                  { mk_aacplus $2 }
-  | VOAACENC app_opt                  { mk_voaacenc $2 }
+  | VOAACENC app_opt                 { mk_voaacenc $2 }
   | EXTERNAL app_opt                 { mk_external $2 }
   | WAV app_opt                      { mk_wav $2 }
   | OGG LPAR ogg_items RPAR          { mk (Encoder (Encoder.Ogg $3)) }
@@ -434,7 +438,8 @@ cexpr:
   | VAR                              { mk (Var $1) }
   | VARLPAR app_list RPAR            { mk (App (mk ~pos:(1,1) (Var $1),$2)) }
   | RECORD_FIELD_LPAR app_list RPAR  { mk (App (deep_field $1,$2)) }
-  | cexpr FIELD VARLPAR app_list RPAR { mk (App (mk (Field ($1, $3, None)), $4)) }
+  | cexpr FIELD VARLPAR app_list RPAR
+                                     { mk (App (mk (Field ($1, $3, None)), $4)) }
   | VARLBRA expr RBRA                { mk (App (mk ~pos:(1,1) (Var "_[_]"),
                                            ["",$2;
                                             "",mk ~pos:(1,1) (Var $1)])) }
