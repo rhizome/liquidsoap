@@ -1,3 +1,9 @@
+# Catenate two lists.
+# @category List
+def list.append(x,y)
+  x@y
+end
+
 # Alias for the <code>l[k]</code> notation.
 # @category List
 # @param a Key to look for

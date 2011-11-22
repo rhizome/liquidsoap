@@ -160,6 +160,8 @@ rule token = parse
   | '}' { RCUR }
   | ',' { COMMA }
   | ':' { COLON }
+  | "::" { COLONCOLON }
+  | "@"  { AROBASE }
   | ';' { SEQ }
   | ";;" { SEQSEQ }
   | '.' { FIELD }

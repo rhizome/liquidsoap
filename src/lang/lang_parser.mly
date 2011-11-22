@@ -209,7 +209,7 @@
 %token BEGIN END GETS TILD
 %token <Doc.item * (string*string) list> DEF
 %token IF THEN ELSE ELSIF
-%token LPAR RPAR COMMA SEQ SEQSEQ COLON QMARK
+%token LPAR RPAR COMMA SEQ SEQSEQ COLON COLONCOLON AROBASE QMARK
 %token LBRA RBRA LCUR RCUR
 %token FUN YIELDS
 %token <string> BIN0
@@ -325,6 +325,10 @@ expr:
   | FLOAT                            { mk (Float  $1) }
   | STRING                           { mk (String $1) }
   | list                             { mk (List $1) }
+  | expr AROBASE expr                { mk (App (mk ~pos:(1,1) (Var "_@_"),
+                                           ["",$1; "", $3])) }
+  | expr COLONCOLON expr             { mk (App (mk ~pos:(1,1) (Var "_@_"),
+                                           ["", mk (List [$1]); "", $3])) }
   | record                           { mk (Record $1) }
   | LBRA GETS RBRA                   { mk (Record Lang_types.Fields.empty) } 
   | expr FIELD VAR                   { mk (Field ($1, $3, None)) }
@@ -419,6 +423,10 @@ cexpr:
   | FLOAT                            { mk (Float  $1) }
   | STRING                           { mk (String $1) }
   | list                             { mk (List $1) }
+  | cexpr AROBASE expr               { mk (App (mk ~pos:(1,1) (Var "_@_"),
+                                           ["",$1; "", $3])) }
+  | cexpr COLONCOLON expr            { mk (App (mk ~pos:(1,1) (Var "_@_"),
+                                           ["", mk (List [$1]); "", $3])) }
   | record                           { mk (Record $1) }
   | LBRA GETS RBRA                   { mk (Record Lang_types.Fields.empty) }
   | cexpr FIELD VAR                  { mk (Field ($1, $3, None)) }

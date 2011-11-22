@@ -1022,7 +1022,7 @@ let () =
            | _::tl -> Lang.list t tl)
 
 let () =
-  add_builtin "list.append" ~cat:List
+  add_builtin "_@_" ~cat:List
     ~descr:"Catenate two lists."
     ["",Lang.list_t (Lang.univ_t 1),None,None;
      "",Lang.list_t (Lang.univ_t 1),None,None]
