@@ -146,7 +146,7 @@ and in_term =
   | Is_field of term * string
   (* Open a record in a term, ie put all its members as toplevel definitions. *)
   | Open of term * term
-  | Product of term * term
+  | Product of term list
   | Ref     of term
   | Get     of term
   | Set     of term * term
@@ -185,8 +185,8 @@ let rec print_term v = match v.term with
     "["^String.concat ", " 
         (T.Fields.fold 
           (fun _ t l -> print_term t.rval :: l) r [])^"]"
-  | Product (a,b) ->
-      Printf.sprintf "(%s,%s)" (print_term a) (print_term b)
+  | Product l ->
+      Printf.sprintf "(%s)" (String.concat "," (List.map print_term l))
   | Ref a ->
       Printf.sprintf "ref(%s)" (print_term a)
   | Fun (_,[],v) when is_ground v -> "{"^(print_term v)^"}"
@@ -217,9 +217,9 @@ let rec free_vars tm = match tm.term with
     Vars.union (free_vars r) t
   | Is_field (r,_) -> free_vars r
   | Open (r, v) -> Vars.union (free_vars r) (free_vars v)
-  | Product (a,b) | Seq (a,b) | Set (a,b) ->
+  | Seq (a,b) | Set (a,b) ->
       Vars.union (free_vars a) (free_vars b)
-  | List l ->
+  | Product l | List l ->
       List.fold_left (fun v t -> Vars.union v (free_vars t)) Vars.empty l
   | Record r ->
       T.Fields.fold (fun _ t v -> Vars.union v (free_vars t.rval)) r Vars.empty
@@ -276,9 +276,9 @@ let rec check_unused ~lib tm =
     | Open (r,e) ->
       let v = check v r in
       check v e
-    | Product (a,b) | Set (a,b) -> check (check v a) b
+    | Set (a,b) -> check (check v a) b
     | Seq (a,b) -> check ~toplevel (check v a) b
-    | List l -> List.fold_left check v l
+    | Product l | List l -> List.fold_left check v l
     | Record r -> T.Fields.fold (fun _ t v -> check v t.rval) r v
     | Replace_field (r,_,e) ->
         let v = check v r in
@@ -346,9 +346,9 @@ let rec map_types f (gen:'a list) tm = match tm.term with
   | Get r ->
       { t = f gen tm.t ;
         term = Get (map_types f gen r) }
-  | Product (a,b) ->
+  | Product l ->
       { t = f gen tm.t ;
-        term = Product (map_types f gen a, map_types f gen b) }
+        term = Product (List.map (map_types f gen) l) }
   | Seq (a,b) ->
       { t = f gen tm.t ;
         term = Seq (map_types f gen a, map_types f gen b) }
@@ -400,7 +400,7 @@ let rec map_types f (gen:'a list) tm = match tm.term with
 let rec fold_types f gen x tm = match tm.term with
   | Unit | Bool _ | Int _ | String _ | Float _ | Encoder _ | Var _ ->
       f gen x tm.t
-  | List l ->
+  | Product l | List l ->
       List.fold_left (fun x tm -> fold_types f gen x tm) (f gen x tm.t) l
   | Record r ->
       T.Fields.fold
@@ -421,7 +421,7 @@ let rec fold_types f gen x tm = match tm.term with
   | Open (r,t) ->
     let x = fold_types f gen x r in
     fold_types f gen x t
-  | Product (a,b) | Seq (a,b) | Set (a,b) ->
+  | Seq (a,b) | Set (a,b) ->
       fold_types f gen (fold_types f gen x a) b
   | App (tm,l) ->
       let x = fold_types f gen x tm in
@@ -458,7 +458,7 @@ struct
     | Encoder of Encoder.format
     | List    of value list
     | Record  of gvalue T.Fields.t
-    | Product of value * value
+    | Product of value list
     | Ref     of value ref
     (** The first environment contains the parameters already passed
       * to the function. Next parameters will be inserted between that
@@ -495,8 +495,8 @@ struct
           "["^ s ^ "]"
     | Ref a ->
         Printf.sprintf "ref(%s)" (print_value !a)
-    | Product (a,b) ->
-        Printf.sprintf "(%s,%s)" (print_value a) (print_value b)
+    | Product l ->
+        Printf.sprintf "(%s)" (String.concat "," (List.map print_value l))
     | Fun ([],_,_,x) when is_ground x -> "{"^print_term x^"}"
     | Fun (l,_,_,x) when is_ground x -> 
         let f (label,_,value) =
@@ -520,9 +520,9 @@ struct
   let rec map_types f gen v = match v.value with
     | Unit | Bool _ | Int _ | String _ | Float _ | Encoder _ ->
         { v with t = f gen v.t }
-    | Product (a,b) ->
+    | Product l ->
         { t = f gen v.t ;
-          value = Product (map_types f gen a, map_types f gen b) }
+          value = Product (List.map (map_types f gen) l) }
     | List l ->
         { t = f gen v.t ;
           value = List (List.map (map_types f gen) l) }
@@ -592,8 +592,7 @@ let rec value_restriction t = match t.term with
   | Record r -> 
       let r = Lang_types.list_of_fields r in
       List.for_all (fun (_,v) -> value_restriction v.rval) r
-  | List l -> List.for_all value_restriction l
-  | Product (a,b) -> value_restriction a && value_restriction b
+  | Product l | List l -> List.for_all value_restriction l
   | _ -> false
 
 let generalize v =
@@ -755,9 +754,9 @@ let rec check ?(print_toplevel=false) ~level ~env e =
     let fields = T.Fields.fold (fun x (s,_) l -> (x,s)::l) fields [] in
     let env = fields@env in
     check ~level ~env t
-  | Product (a,b) ->
-      check ~level ~env a ; check ~level ~env b ;
-      e.t >: mk (T.Product (a.t,b.t))
+  | Product l ->
+      List.iter (check ~level ~env) l ;
+      e.t >: mk (T.Product (List.map (fun x -> x.t) l))
   | Ref a ->
       check ~level ~env a ;
       e.t >: ref_t ~pos ~level a.t
@@ -974,7 +973,7 @@ let rec eval ~env tm =
       | Float   x -> mk (V.Float x)
       | Encoder x -> mk (V.Encoder x)
       | List l -> mk (V.List (List.map (eval ~env) l))
-      | Product (a,b) -> mk (V.Product (eval ~env a, eval ~env b))
+      | Product l -> mk (V.Product (List.map (eval ~env) l))
       | Record r ->
           let fields =
             T.Fields.map

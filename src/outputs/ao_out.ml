@@ -133,7 +133,7 @@ let () =
 
       "options",
       Lang.metadata_t,
-      Some (Lang.list (Lang.product_t Lang.string_t Lang.string_t) []),
+      Some (Lang.list (Lang.pair_t Lang.string_t Lang.string_t) []),
       Some "List of parameters, depends on the driver." ;
 
       "", Lang.source_t kind, None, None
@@ -148,7 +148,7 @@ let () =
        let options =
          List.map
            (fun x ->
-              let a,b = Lang.to_product x in
+              let a,b = Lang.to_pair x in
                 Lang.to_string a, Lang.to_string b)
            (Lang.to_list (List.assoc "options" p))
        in

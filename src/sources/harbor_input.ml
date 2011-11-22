@@ -470,11 +470,11 @@ let () =
          let on_connect l =
            let l = 
              List.map 
-              (fun (x,y) -> Lang.product (Lang.string x) (Lang.string y))
+              (fun (x,y) -> Lang.pair (Lang.string x) (Lang.string y))
               l
            in
            let arg =
-             Lang.list ~t:(Lang.product_t Lang.string_t Lang.string_t) l
+             Lang.list ~t:(Lang.pair_t Lang.string_t Lang.string_t) l
            in
            ignore
              (Lang.apply ~t:Lang.unit_t (List.assoc "on_connect" p) ["",arg])

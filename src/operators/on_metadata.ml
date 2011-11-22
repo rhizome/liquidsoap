@@ -48,7 +48,7 @@ let () =
   Lang.add_operator "on_metadata"
     [ "",
       Lang.fun_t
-        [false,"",Lang.list_t (Lang.product_t Lang.string_t Lang.string_t)]
+        [false,"",Lang.list_t (Lang.pair_t Lang.string_t Lang.string_t)]
         Lang.unit_t,
       None,
       Some ("Function called on every metadata packet in the stream."^

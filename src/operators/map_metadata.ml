@@ -35,7 +35,7 @@ object (self)
   method private rewrite m =
     let m' = Lang.apply ~t:Lang.metadata_t rewrite_f ["",Lang.metadata m] in
     let replace_val v =
-      let (x,y) = Lang.to_product v in
+      let (x,y) = Lang.to_pair v in
       let x = Lang.to_string x and y = Lang.to_string y in
       if not strip then
         Hashtbl.replace m x y
@@ -79,8 +79,8 @@ let register =
   Lang.add_operator "map_metadata"
     [ "", Lang.fun_t
             [false,"",
-             Lang.list_t (Lang.product_t Lang.string_t Lang.string_t)]
-            (Lang.list_t (Lang.product_t Lang.string_t Lang.string_t)),
+             Lang.list_t (Lang.pair_t Lang.string_t Lang.string_t)]
+            (Lang.list_t (Lang.pair_t Lang.string_t Lang.string_t)),
       None, Some "A function that returns new metadata." ;
       "update", Lang.bool_t, Some (Lang.bool true),
       Some "Only update metadata. If false, only returned values \

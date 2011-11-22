@@ -122,7 +122,7 @@ let proto kind =
           (Some (Lang.val_cst_fun [ ("", Lang.string_t, None) ] Lang.unit)),
           (Some "Callback executed when connection stops."));
          ("headers", Lang.metadata_t,
-          (Some (Lang.list (Lang.product_t Lang.string_t Lang.string_t) [])),
+          (Some (Lang.list (Lang.pair_t Lang.string_t Lang.string_t) [])),
           (Some "Additional headers."));
          ("dumpfile", Lang.string_t, (Some (Lang.string "")),
           (Some
@@ -422,8 +422,7 @@ class output ~kind p =
                                                                    in
                                                                     f
                                                                     (Lang.
-                                                                    to_product
-                                                                    v))
+                                                                    to_pair v))
                                                                 (Lang.to_list
                                                                    (List.
                                                                     assoc

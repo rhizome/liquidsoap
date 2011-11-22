@@ -59,7 +59,7 @@ end
 let () =
   let kind = Lang.univ_t 1 in
   let return_t =
-    Lang.product_t
+    Lang.pair_t
      (Lang.fun_t [false,"",Lang.metadata_t] Lang.unit_t)
      (Lang.source_t kind)
   in
@@ -75,7 +75,7 @@ let () =
     (fun p t ->
        let s = Lang.to_source (List.assoc "" p) in
        let id = Lang.to_string (List.assoc "id" p) in
-       let (_,t) = Lang.of_product_t t in
+       let (_,t) = Lang.of_pair_t t in
        let kind =
          Lang.frame_kind_of_kind_type (Lang.of_source_t t)
        in
@@ -88,7 +88,7 @@ let () =
                            (Lang.to_metadata (List.assoc "" p));
                          Lang.unit)
        in
-       Lang.product f (Lang.source (s :> Source.source)))
+       Lang.pair f (Lang.source (s :> Source.source)))
 
 (** Insert metadata at the beginning if none is set.
   * Currently used by the switch classes. *)

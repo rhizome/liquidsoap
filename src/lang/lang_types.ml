@@ -173,7 +173,7 @@ and descr =
   | Constr  of constructed
   | Ground  of ground
   | List    of t
-  | Product of t * t
+  | Product of t list
   | Zero | Succ of t | Variable
   | Arrow     of (bool*string*t) list * t
   | EVar      of cvar (* type variable *)
@@ -189,7 +189,7 @@ type repr = [
   | `Constr  of string * (variance*repr) list
   | `Ground  of ground
   | `List    of repr
-  | `Product of repr * repr
+  | `Product of repr list
   | `Zero | `Succ of repr | `Variable
   | `Arrow     of (bool*string*repr) list * repr
   | `EVar      of string*constraints (* existential variable *)
@@ -285,7 +285,7 @@ let copy_with subst t =
               cp (Constr { c with params = params })
         | Ground _ -> cp t.descr
         | List t -> cp (List (aux t))
-        | Product (a,b) -> cp (Product (aux a, aux b))
+        | Product l -> cp (Product (List.map aux l))
         | Zero | Variable -> cp t.descr
         | Succ t -> cp (Succ (aux t))
         | Arrow (p,t) ->
@@ -385,10 +385,7 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
       match t.descr with
         | Ground g -> `Ground g
         | List t -> `List (repr t)
-        | Product (a,b) -> 
-            let a = repr a in
-            let b = repr b in
-            `Product (a, b)
+        | Product l -> `Product (List.map (fun t -> repr t) l)
         | Zero -> `Zero
         | Variable -> `Variable
         | Succ t -> `Succ (repr t)
@@ -465,11 +462,16 @@ let print_repr f t =
             vars
         end
     | `Ground g -> Format.fprintf f "%s" (print_ground g) ; vars
-    | `Product (a,b) ->
+    | `Product l ->
         Format.fprintf f "@[<1>(" ;
-        let vars = print ~par:true vars a in
-        Format.fprintf f "*@," ;
-        let vars = print ~par:true vars b in
+        let len = List.length l in
+        let (vars, _) = 
+          List.fold_left (fun (vars,pos) x ->
+            let vars = print ~par:true vars x in
+            if pos < len then
+              Format.fprintf f "*@,";
+            (vars, pos+1)) (vars,1) l
+        in
         Format.fprintf f ")@]" ;
         vars
     | `List t ->
@@ -641,7 +643,7 @@ let rec occur_check a b =
     if a == b then raise (Occur_check (a,b)) ;
     match b.descr with
       | Constr c -> List.iter (fun (_,x) -> occur_check a x) c.params
-      | Product (t1,t2) -> occur_check a t1 ; occur_check a t2
+      | Product l -> List.iter (occur_check a) l ;
       | List t -> occur_check a t
       | Succ t -> occur_check a t
       | Zero | Variable -> ()
@@ -704,8 +706,7 @@ let rec bind a0 b =
                          | EVar (j,c) ->
                              if List.mem Ord c then () else
                                b.descr <- EVar (j,Ord::c)
-                         | Product (b1,b2) ->
-                             check (deref b1) ; check (deref b2)
+                         | Product l -> List.iter (fun x -> check (deref x)) l
                          | List b -> check (deref b)
                          | _ -> raise (Unsatisfied_constraint (Ord,b))
                      in
@@ -880,15 +881,21 @@ let rec (<:) ~generalized a b =
         begin try t1 <: t2 with
           | Error (a,b) -> raise (Error (`List a, `List b))
         end
-    | Product (a,b), Product (aa,bb) ->
-        begin try a <: aa with
-          | Error (a,b) -> raise (Error (`Product (a,`Ellipsis),
-                                         `Product (b,`Ellipsis)))
-        end ;
-        begin try b <: bb with
-          | Error (a,b) -> raise (Error (`Product (`Ellipsis,a),
-                                         `Product (`Ellipsis,b)))
-        end
+    | Product l, Product l' ->
+        let f l = `Product (List.map (fun _ -> `Ellipsis) l) in
+        let f l = (f l :> repr)  in
+        if List.length l <> List.length l' then
+          raise (Error (f l, f l'));
+        List.iter2 (fun a b ->
+          try a <: b with
+            | Error (ar,br) -> 
+                raise 
+                  (Error 
+                    ((`Product 
+                       (List.map (fun x -> if x = a then ar else `Ellipsis) l)),
+                     (`Product
+                        (List.map (fun x -> if x = b then br else `Ellipsis) l')))))
+          l l'
     | Record r1, Record r2 ->
         let r1 = merge_record r1 in
         let r2 = merge_record r2 in
@@ -1131,7 +1138,8 @@ let filter_vars f t =
     match t.descr with
     | Ground _ | Zero | Variable -> l
     | Succ t | List t -> aux l t
-    | Product (a,b) -> aux (aux l a) b
+    | Product p ->
+       List.fold_left (fun l t -> aux l t) l p
     | Constr c ->
         List.fold_left (fun l (_,t) -> aux l t) l c.params
     | Arrow (p,t) ->

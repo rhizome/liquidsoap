@@ -39,7 +39,7 @@ object
         let m =
           match Frame.get_metadata ab p with
             | None ->
-                Lang.list ~t:(Lang.product_t Lang.string_t Lang.string_t) []
+                Lang.list ~t:(Lang.pair_t Lang.string_t Lang.string_t) []
             | Some m -> Lang.metadata m
         in
           ignore (Lang.apply ~t:Lang.unit_t f ["",m]) ;
@@ -54,7 +54,7 @@ let () =
   Lang.add_operator "on_track"
     [ "",
       Lang.fun_t
-        [false,"",Lang.list_t (Lang.product_t Lang.string_t Lang.string_t)]
+        [false,"",Lang.list_t (Lang.pair_t Lang.string_t Lang.string_t)]
         Lang.unit_t,
       None,
       Some "Function called on every beginning of track in the stream, \

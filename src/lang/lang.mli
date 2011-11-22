@@ -42,7 +42,7 @@ and in_value =
   | Encoder of Encoder.format
   | List    of value list
   | Record  of gvalue Lang_types.Fields.t
-  | Product of value * value
+  | Product of value list
   | Ref     of value ref
   | Fun     of (string * string * value option) list *
                full_env * full_env * Lang_values.term
@@ -161,7 +161,8 @@ val to_format : value -> Encoder.format
 val to_request : value -> Request.t
 val to_int : value -> int
 val to_list : value -> value list
-val to_product : value -> value * value
+val to_product : value -> value list
+val to_pair : value -> value * value
 val to_metadata : value -> Frame.metadata
 val to_string_list : value -> string list
 val to_int_list : value -> int list
@@ -180,8 +181,11 @@ val string_t : t
 val record_t    : ?row:t -> ?opt_row:t -> (Lang_types.scheme*bool) Lang_types.Fields.t -> t
 val of_record_t : t -> (Lang_types.scheme, t) Lang_types.record
 
-val product_t    : t -> t -> t
-val of_product_t : t -> t * t
+val product_t    : t list -> t
+val of_product_t : t -> t list
+
+val pair_t : t -> t -> t
+val of_pair_t : t -> t * t
 
 val list_t     : t -> t
 val of_list_t  : t -> t
@@ -233,7 +237,8 @@ val string : string -> value
 val list : t:t -> value list -> value
 val source : Source.source -> value
 val request : Request.t -> value
-val product : value -> value -> value
+val product : value list -> value
+val pair : value -> value -> value
 
 (** Build a function from an OCaml function.
   * Items in the prototype indicate the label, type and optional

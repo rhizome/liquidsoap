@@ -51,15 +51,10 @@ let rec of_json t j =
          let l = List.map (of_json t) l in
          Lang.list ~t l
         with _  ->
-         (* Otherwise try to parse as product. *)
-         begin
-          match l with
-            | [j;j'] ->
-                let (t,t') = Lang.of_product_t t in
-                Lang.product (of_json t j)
-                             (of_json t' j')
-            | _ -> failwith "could not parse JSON string."
-         end
+         (* Otherwise parse as product. *)
+          let t = Lang.of_product_t t in
+          assert(List.length l = List.length t);
+          Lang.product (List.map2 of_json t l)
        end
     | `Assoc l ->
         (* Try to convert the object to a list of pairs of strings
@@ -67,12 +62,12 @@ let rec of_json t j =
          * currently it won't work if it is [?T] which would be
          * obtained with of_json(default=[],...). *)
         let lt = Lang.of_list_t t in
-        let (t,t') = Lang.of_product_t lt in
+        let (t,t') = Lang.of_pair_t lt in
         ignore (Lang.string_t <: t) ;
         let l =
           List.map
-            (fun (x,y) -> Lang.product (Lang.string x)
-                                       (of_json t' y))
+            (fun (x,y) -> Lang.pair (Lang.string x)
+                                    (of_json t' y))
             l
         in
         Lang.list ~t:lt l

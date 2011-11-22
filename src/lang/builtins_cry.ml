@@ -26,8 +26,8 @@ open Lang_builtins
 let log = Dtools.Log.make ["icy";"update_metadata"]
 
 let () =
-  let user_agent = Lang.product (Lang.string "User-Agent")
-                                (Lang.string Http.user_agent)
+  let user_agent = Lang.pair (Lang.string "User-Agent")
+                             (Lang.string Http.user_agent)
   in
   add_builtin "icy.update_metadata"
     ~cat:Interaction
@@ -70,7 +70,7 @@ let () =
                 let f (x,y) =
                   Lang.to_string x, Lang.to_string y
                 in
-                f (Lang.to_product v))
+                f (Lang.to_pair v))
              (Lang.to_list (List.assoc "headers" p))
       in
       let headers = 

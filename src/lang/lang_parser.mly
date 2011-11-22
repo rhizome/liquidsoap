@@ -347,7 +347,7 @@ expr:
   | OGG LPAR ogg_items RPAR          { mk (Encoder (Encoder.Ogg $3)) }
   | top_level_ogg_item               { mk (Encoder (Encoder.Ogg [$1])) }
   | LPAR RPAR                        { mk Unit }
-  | LPAR expr COMMA expr RPAR        { mk (Product ($2,$4)) }
+  | product                          { mk (Product $1) }
   | VAR                              { mk (Var $1) }
   | VARLPAR app_list RPAR            { mk (App (mk ~pos:(1,1) (Var $1),$2)) }
   | RECORD_FIELD_LPAR app_list RPAR  { mk (App (deep_field $1,$2)) }
@@ -388,7 +388,7 @@ ty:
   | VAR                       { mk_ty $1 [] }
   | VARLPAR ty_args RPAR      { mk_ty $1 $2 }
   | LBRA ty RBRA              { Lang_types.make (Lang_types.List $2) }
-  | LPAR ty TIMES ty RPAR     { Lang_types.make (Lang_types.Product ($2,$4)) }
+  | LPAR ty TIMES ty RPAR     { Lang_types.make (Lang_types.Product [$2;$4]) }
   | INT                       { Lang_values.type_of_int $1 }
   | TIMES                     { Lang_values.variable_t }
   | TIMES BIN2 INT            { if $2 <> "+" then raise Parsing.Parse_error else
@@ -441,7 +441,7 @@ cexpr:
   | OGG LPAR ogg_items RPAR          { mk (Encoder (Encoder.Ogg $3)) }
   | top_level_ogg_item               { mk (Encoder (Encoder.Ogg [$1])) }
   | LPAR RPAR                        { mk Unit }
-  | LPAR expr COMMA expr RPAR        { mk (Product ($2,$4)) }
+  | product                          { mk (Product $1) }
   | VAR                              { mk (Var $1) }
   | VARLPAR app_list RPAR            { mk (App (mk ~pos:(1,1) (Var $1),$2)) }
   | RECORD_FIELD_LPAR app_list RPAR  { mk (App (deep_field $1,$2)) }
@@ -494,6 +494,12 @@ inner_record:
   | VAR GETS expr                    { Lang_types.Fields.add
                                          $1 (field $3)
                                          Lang_types.Fields.empty }
+
+product:
+  | LPAR inner_product RPAR { $2 }
+inner_product:
+  | expr COMMA inner_product { $1 :: $3 }
+  | expr                     { [$1] }
 
 
 app_list_elem:

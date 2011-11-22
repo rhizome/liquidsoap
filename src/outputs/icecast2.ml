@@ -147,8 +147,8 @@ open M
 let no_mount = "Use [name] with .ogg extension if relevant"
 let no_name = "Use [mount]"
 
-let user_agent = Lang.product (Lang.string "User-Agent")
-                              (Lang.string Http.user_agent)
+let user_agent = Lang.pair (Lang.string "User-Agent")
+                           (Lang.string Http.user_agent)
 
 let proto kind =
   Output.proto @ (Icecast_utils.base_proto kind) @
@@ -189,7 +189,7 @@ let proto kind =
           this amount of time (in seconds)." ;
     "public", Lang.bool_t, Some (Lang.bool true), None ;
     ("headers", Lang.metadata_t,
-     Some (Lang.list (Lang.product_t Lang.string_t Lang.string_t) [user_agent]),
+     Some (Lang.list (Lang.pair_t Lang.string_t Lang.string_t) [user_agent]),
      Some "Additional headers.") ;
     ("dumpfile", Lang.string_t, Some (Lang.string ""), 
      Some "Dump stream to file, for debugging purpose. Disabled if empty.") ;
@@ -287,7 +287,7 @@ class output ~kind p =
                 let f (x,y) = 
                   Lang.to_string x, Lang.to_string y 
                 in
-                f (Lang.to_product v))
+                f (Lang.to_pair v))
              (Lang.to_list (List.assoc "headers" p))
   in
   let connection = Cry.create ~timeout ?connection_timeout () in

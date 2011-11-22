@@ -36,9 +36,14 @@ let unit_t    = ground_t T.Unit
 let float_t   = ground_t T.Float
 let bool_t    = ground_t T.Bool
 let string_t  = ground_t T.String
-let product_t a b = T.make (T.Product (a,b))
+let product_t l = T.make (T.Product l)
 let of_product_t t = match (T.deref t).T.descr with
-  | T.Product (t,t') -> t,t'
+  | T.Product l -> l
+  | _ -> assert false
+
+let pair_t t t' = T.make (T.Product [t;t'])
+let of_pair_t t = match of_product_t t with
+  | t :: t' :: [] -> t,t'
   | _ -> assert false
 
 let fun_t p b = T.make (T.Arrow (p,b))
@@ -56,7 +61,7 @@ let of_record_t t = match (T.deref t).T.descr with
   | T.Record r -> r
   | _ -> assert false
 
-let metadata_t = list_t (product_t string_t string_t)
+let metadata_t = list_t (pair_t string_t string_t)
 
 let zero_t = Term.zero_t
 let succ_t t = Term.succ_t t
@@ -228,7 +233,8 @@ let int i = mk int_t (Int i)
 let bool i = mk bool_t (Bool i)
 let float i = mk float_t (Float i)
 let string i = mk string_t (String i)
-let product a b = mk (product_t a.t b.t) (Product (a,b))
+let product l = mk (product_t (List.map (fun x -> x.t) l)) (Product l)
+let pair a b = mk (pair_t a.t b.t) (Product [a;b])
 
 let list ~t l = mk (list_t t) (List l)
 
@@ -274,9 +280,9 @@ let val_cst_fun p c =
 
 let metadata m =
   list
-    (product_t string_t string_t)
+    (pair_t  string_t string_t)
     (Hashtbl.fold
-       (fun k v l -> (product (string k) (string v))::l)
+      (fun k v l -> (pair (string k) (string v))::l)
        m [])
 
 (** Runtime error, should eventually disappear. *)
@@ -503,7 +509,7 @@ let iter_sources f v =
   let rec iter_term env v = match v.Term.term with
     | Term.Unit | Term.Bool _ | Term.String _
     | Term.Int _ | Term.Float _ | Term.Encoder _ -> ()
-    | Term.List l -> List.iter (iter_term env) l
+    | Term.Product l | Term.List l -> List.iter (iter_term env) l
     | Term.Record r ->
         T.Fields.iter (fun _ a -> iter_term env a.Lang_values.rval) r
     | Term.Field (r,_,_) -> iter_term env r
@@ -516,7 +522,7 @@ let iter_sources f v =
       iter_term env r; iter_term env t
     | Term.Ref a | Term.Get a -> iter_term env a
     | Term.Let {Term.def=a;body=b}
-    | Term.Product (a,b) | Term.Seq (a,b) | Term.Set (a,b) ->
+    | Term.Seq (a,b) | Term.Set (a,b) ->
         iter_term env a ; iter_term env b
     | Term.Var v ->
         (* If it's locally bound it won't be in [env]. *)
@@ -534,12 +540,10 @@ let iter_sources f v =
   and iter_value v = match v.value with
     | Source s -> f s
     | Unit | Bool _ | Int _ | Float _ | String _ | Request _ | Encoder _ -> ()
-    | List l -> List.iter iter_value l
+    | Product l | List l -> List.iter iter_value l
     | Record r -> 
         T.Fields.iter (fun _ a -> iter_value a.v_value) r
     | Ref a -> iter_value !a
-    | Product (a,b) ->
-        iter_value a ; iter_value b
     | Fun (proto,pe,env,body) ->
         (* The following is necessarily imprecise: we might see
          * sources that will be unused in the execution of the function. *)
@@ -624,13 +628,17 @@ let to_list t = match t.value with
   | _ -> assert false
 
 let to_product t = match t.value with
-  | Product (a,b) -> (a,b)
+  | Product l -> l
+  | _ -> assert false
+
+let to_pair t = match to_product t with
+  | x :: y :: [] -> x, y
   | _ -> assert false
 
 let to_metadata t = 
   let pop v = 
-    let f (a,b) = (to_string a,to_string b) in
-    f (to_product v)
+    let f (a,b) = (to_string a,to_string b) in 
+    f (to_pair v)
   in
   let t = List.map pop (to_list t) in
   let metas = Hashtbl.create 10 in

@@ -113,8 +113,8 @@ let () =
          new vumeter ~kind src scroll);
   let return_t =
     Lang.product_t
-     (Lang.fun_t [] Lang.float_t)
-     (Lang.source_t k)
+      [Lang.fun_t [] Lang.float_t;
+       Lang.source_t k]
   in
   Lang.add_builtin "rms"
     ~category:(Lang.string_of_category Lang.Visualization)
@@ -131,7 +131,11 @@ let () =
          Lang.to_source (f "")
        in
        let id = Lang.to_string (f "id") in
-       let (_,t) = Lang.of_product_t t in
+       let t = 
+         match Lang.of_product_t t with
+           | _ :: t :: [] -> t
+           | _ -> assert false
+       in
        let kind =
          Lang.frame_kind_of_kind_type
           (Lang.of_source_t t)
@@ -142,4 +146,4 @@ let () =
          Lang.val_fun [] ~ret_t:Lang.float_t
                       (fun p t -> Lang.float s#rms)
        in
-       Lang.product f (Lang.source (s :> Source.source)))
+       Lang.product [f;(Lang.source (s :> Source.source))])

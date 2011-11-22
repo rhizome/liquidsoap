@@ -206,7 +206,7 @@ let () =
                Lang.unit)
 
 let () =
-  let t = Lang.product_t Lang.string_t Lang.int_t in
+  let t = Lang.pair_t Lang.string_t Lang.int_t in
     add_builtin "get_clock_status" ~cat:Liq
       ~descr:"Get the current time for all allocated clocks."
       []
@@ -215,14 +215,14 @@ let () =
          let l =
            Clock.fold
              (fun clock l ->
-                Lang.product
+                Lang.pair
                   (Lang.string clock#id)
                   (Lang.int clock#get_tick)
                 :: l)
              []
          in
          let l =
-           Lang.product
+           Lang.pair
              (Lang.string "uptime")
              (Lang.int
                 (int_of_float
@@ -338,7 +338,7 @@ let () =
                f ["",Lang.string name]
            in
            let ret = Lang.to_list ret in
-           let ret = List.map Lang.to_product ret in
+           let ret = List.map Lang.to_pair ret in
            let ret =
              List.map
                (fun (x,y) -> Lang.to_string x,Lang.to_string y)
@@ -481,9 +481,11 @@ let compare_value a b =
     | Lang.String a, Lang.String b  -> compare a b
     | Lang.Bool   a, Lang.Bool b    -> compare a b
     | Lang.Unit    , Lang.Unit      -> 0
-    | Lang.Product (a1,a2), Lang.Product (b1,b2) ->
-        let c = aux (a1.Lang.value,b1.Lang.value) in
-          if c = 0 then aux (a2.Lang.value,b2.Lang.value) else c
+    | Lang.Product l, Lang.Product l' ->
+        assert(List.length l = List.length l');
+        List.fold_left2 (fun c a b -> 
+          if c = 0 then aux (a.Lang.value,b.Lang.value) else c)
+          0 l l'
     | Lang.List l1, Lang.List l2 ->
         let rec cmp = function
           | [],[] -> 0
@@ -690,14 +692,14 @@ let () =
          in
          let l = extract [] 1 in
          Lang.list
-           (Lang.product_t Lang.string_t Lang.string_t)
+           (Lang.pair_t Lang.string_t Lang.string_t)
            (List.map
               (fun (x,y) ->
-                 Lang.product (Lang.string x) (Lang.string y))
+                 Lang.pair (Lang.string x) (Lang.string y))
               l)
        with
          | Not_found ->
-             Lang.list (Lang.product_t Lang.string_t Lang.string_t) [])
+             Lang.list (Lang.pair_t Lang.string_t Lang.string_t) [])
 
 let () =
   add_builtin "string.match" ~cat:String
@@ -869,7 +871,7 @@ let () =
                      let l =
                        List.map
                          (fun p ->
-                            let a,b = Lang.to_product p in
+                            let a,b = Lang.to_pair p in
                               Lang.to_string a, Lang.to_string b)
                          (Lang.to_list (Lang.assoc "" 2 p))
                      in
@@ -899,7 +901,7 @@ let () =
        let l =
          List.map
            (fun p ->
-              let (a,b) = Lang.to_product p in
+              let (a,b) = Lang.to_pair p in
                 Lang.to_string a, Lang.to_string b)
            (Lang.to_list (Lang.assoc "" 2 p))
        in
@@ -1088,14 +1090,14 @@ let () =
 let () =
   add_builtin "fst" ~cat:List (* TODO wrong category *)
     ~descr:"Get the first component of a pair."
-    ["",Lang.product_t (Lang.univ_t 1) (Lang.univ_t 2),None,None]
+    ["",Lang.pair_t (Lang.univ_t 1) (Lang.univ_t 2),None,None]
     (Lang.univ_t 1)
-    (fun p -> fst (Lang.to_product (Lang.assoc "" 1 p))) ;
+    (fun p -> fst (Lang.to_pair (Lang.assoc "" 1 p))) ;
   add_builtin "snd" ~cat:List (* TODO wrong category *)
     ~descr:"Get the second component of a pair."
-    ["",Lang.product_t (Lang.univ_t 1) (Lang.univ_t 2),None,None]
+    ["",Lang.pair_t (Lang.univ_t 1) (Lang.univ_t 2),None,None]
     (Lang.univ_t 2)
-    (fun p -> snd (Lang.to_product (Lang.assoc "" 1 p)))
+    (fun p -> snd (Lang.to_pair (Lang.assoc "" 1 p)))
 
 (** Misc control/system functions. *)
 
@@ -1413,7 +1415,7 @@ let () =
      "protocol",Lang.string_t;
      "data",Lang.string_t;
      "headers",Lang.list_t
-                    (Lang.product_t Lang.string_t
+                    (Lang.pair_t Lang.string_t
                      Lang.string_t);
      "uri",Lang.string_t]
   in
@@ -1454,10 +1456,10 @@ let () =
        let f ~http_method ~protocol ~data ~headers ~socket uri =
          let l =
             List.map 
-              (fun (x,y) -> Lang.product (Lang.string x) (Lang.string y)) 
+              (fun (x,y) -> Lang.pair (Lang.string x) (Lang.string y)) 
               headers
          in
-         let l = Lang.list ~t:(Lang.product_t Lang.string_t Lang.string_t)
+         let l = Lang.list ~t:(Lang.pair_t Lang.string_t Lang.string_t)
                            l
          in
          let fields =
@@ -1573,12 +1575,12 @@ let rec to_json_compact v =
          try
           let t = v.Lang.t in
           let t = Lang.of_list_t t in
-          let (t,_) = Lang.of_product_t t in
+          let (t,_) = Lang.of_pair_t t in
           let compare = Lang_types.( <: ) in
           ignore(compare t Lang.string_t);
           let l = 
             List.map (fun x ->
-                        let (x,y) = Lang.to_product x in
+                        let (x,y) = Lang.to_pair x in
                         Printf.sprintf "%s:%s" 
                           (to_json_compact x) (to_json_compact y))
                       l
@@ -1598,8 +1600,8 @@ let rec to_json_compact v =
             r [] 
         in
           Printf.sprintf "{%s}" (String.concat "," r)
-    | Lang.Product (p,q) -> 
-        Printf.sprintf "[%s,%s]"  (to_json_compact p) (to_json_compact q)
+    | Lang.Product l -> 
+        Printf.sprintf "[%s]" (String.concat "," (List.map to_json_compact l))
     | Lang.Source _ -> "\"<source>\""
     | Lang.Ref v -> Printf.sprintf  "{\"reference\":%s}" (to_json_compact !v)
     | Lang.Encoder e -> print_s (Encoder.string_of_format e)
@@ -1615,13 +1617,13 @@ let rec to_json_pp f v =
          try
           let t = v.Lang.t in
           let t = Lang.of_list_t t in
-          let (t,_) = Lang.of_product_t t in
+          let (t,_) = Lang.of_pair_t t in
             let compare = Lang_types.( <: ) in
             ignore(compare t Lang.string_t);
             let print f l = 
               let len = List.length l in
               let f pos x =
-                let (x,y) = Lang.to_product x in
+                let (x,y) = Lang.to_pair x in
                 if pos != len - 1 then
                   Format.fprintf f "%a: %a,@;<1 0>" 
                     to_json_pp x to_json_pp y
@@ -1649,10 +1651,21 @@ let rec to_json_pp f v =
                in
                Format.fprintf f "@[[@;<1 1>@[%a@]@;<1 0>]@]" print l
         end
-    | Lang.Product (p,q) -> 
-       Format.fprintf f
-         "@[[@;<1 1>@[%a,@;<1 0>%a@]@;<1 0>]@]"
-         to_json_pp p to_json_pp q
+    | Lang.Product l -> 
+       let print f l =
+         let len = List.length l in
+         let f pos x =
+           if pos < len -1 then
+             Format.fprintf f "%a,@;<1 0>"
+               to_json_pp x
+           else
+             Format.fprintf f "%a"
+               to_json_pp x ;
+           pos+1
+           in
+           ignore(List.fold_left f 0 l)
+       in
+       Format.fprintf f "@[[@;<1 1>@[%a@]@;<1 0>]@]" print l
     | Lang.Ref v -> 
        Format.fprintf  f
          "@[{@;<1 1>@[\"reference\":@;<0 1>%a@]@;<1 0>}@]"
@@ -1943,7 +1956,7 @@ let () =
 let () =
   add_builtin "playlist.parse" ~cat:Liq
     ["", Lang.string_t,None,None]
-    (Lang.list_t (Lang.product_t Lang.metadata_t Lang.string_t))
+    (Lang.list_t (Lang.pair_t Lang.metadata_t Lang.string_t))
     ~descr:"Try to parse a local playlist. \
             Return a list of (metadata,URI) items, where metadata is a list \
             of (key,value) bindings."
@@ -1951,19 +1964,19 @@ let () =
        let f = Lang.to_string (List.assoc "" p) in
        let f = Utils.home_unrelate f in
        let content = Utils.read_all f in
-       let ret_item_t = Lang.product_t Lang.metadata_t Lang.string_t in
+       let ret_item_t = Lang.pair_t Lang.metadata_t Lang.string_t in
          try
            let _,l = Playlist_parser.search_valid content in
            let process m =
              let f (n,v) =
-               Lang.product (Lang.string n) (Lang.string v)
+               Lang.pair (Lang.string n) (Lang.string v)
              in
                Lang.list
-                 (Lang.product_t Lang.string_t Lang.string_t)
+                 (Lang.pair_t Lang.string_t Lang.string_t)
                  (List.map f m)
            in
            let process (m,uri) =
-             Lang.product (process m) (Lang.string uri)
+             Lang.pair (process m) (Lang.string uri)
            in
              Lang.list ret_item_t (List.map process l)
          with
@@ -2124,7 +2137,7 @@ type request = Get | Post
 
 let add_http_request name descr request =
   let log = Dtools.Log.make [name] in
-  let header_t   = Lang.product_t Lang.string_t Lang.string_t in
+  let header_t   = Lang.pair_t Lang.string_t Lang.string_t in
   let headers_t  = Lang.list_t header_t in
   let response_fields = 
     ["status",   Lang.string_t;
@@ -2160,7 +2173,7 @@ let add_http_request name descr request =
     (fun p ->
       let headers = List.assoc "headers" p in
       let headers = Lang.to_list headers in
-      let headers = List.map Lang.to_product headers in
+      let headers = List.map Lang.to_pair headers in
       let headers =
         List.map (fun (x,y) -> (Lang.to_string x, Lang.to_string y)) headers
       in
@@ -2191,7 +2204,7 @@ let add_http_request name descr request =
       in
       let headers = 
          Lang.list ~t:headers_t 
-           (List.map (fun (x,y) -> Lang.product (Lang.string x) (Lang.string y))
+           (List.map (fun (x,y) -> Lang.pair (Lang.string x) (Lang.string y))
                      headers)
       in
       let fields =

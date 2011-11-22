@@ -341,7 +341,7 @@ let () =
     [ "single", Lang.list_t Lang.bool_t, Some (Lang.list Lang.bool_t []),
       Some "Forbid the selection of a branch for two tracks in a row. \
             The empty list stands for <code>[false,...,false]</code>." ;
-      "", Lang.list_t (Lang.product_t pred_t (Lang.source_t kind)), None,
+      "", Lang.list_t (Lang.pair_t pred_t (Lang.source_t kind)), None,
       Some "Sources with the predicate telling when they can be played." ]
   in
     Lang.add_operator "source.switch"
@@ -354,7 +354,7 @@ let () =
          let children =
            List.map
              (fun p ->
-                let (pred,s) = Lang.to_product p in
+                let (pred,s) = Lang.to_pair p in
                   pred, Lang.to_source s)
            (Lang.to_list (List.assoc "" p))
          in

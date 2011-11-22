@@ -47,7 +47,7 @@ and descr =
   | Constr of constructed
   | Ground of ground
   | List of t
-  | Product of t * t
+  | Product of t list
   | Zero | Succ of t | Variable
   | Arrow of (bool * string * t) list * t
   | EVar of cvar
