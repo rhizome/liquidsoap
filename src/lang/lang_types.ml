@@ -353,46 +353,42 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
       ("",[]) c
   in
   let counter = let c = ref 0 in fun () -> incr c ; !c in
-  let evars = Hashtbl.create 10 in
-  let evar i c =
-    let constr_symbols,c = split_constr c in
+  let vars = Hashtbl.create 10 in
+  let rec repr ~generalized t =
+    let repr ?(generalized=generalized) t = repr ~generalized t in
+    let is_generalized i = List.exists (fun (j,_) -> j=i) generalized in
+    let var_name i c =
+      let constr_symbols,c = split_constr c in
+      let generalized = is_generalized i in
+      let prefix = if generalized then "" else "_" in
       if debug then
-        `EVar (Printf.sprintf "?%s%d" constr_symbols i, c)
+        Printf.sprintf "'%s%s%d" prefix constr_symbols i
       else
         let s =
           try
-            Hashtbl.find evars i
+            Hashtbl.find vars i
           with Not_found ->
-            let name = String.uppercase (name (counter ())) in
-              Hashtbl.add evars i name ;
+            let name = String.lowercase (name (counter ())) in
+              Hashtbl.add vars i name ;
               name
         in
-          `EVar (Printf.sprintf "?%s%s" constr_symbols s, c)
-  in
-  let rec repr ~generalized t =
-    let repr ?(generalized=generalized) t = repr ~generalized t in
-    let uvar_name ?(generalized=generalized) i c =
-      let constr_symbols,c = split_constr c in
-      let rec index n = function
-        | v::tl ->
-            if fst v = i then
-              let name = Printf.sprintf "'%s%s" constr_symbols (name n) in
-                if debug then name ^ Printf.sprintf ":%d" i else name
-            else
-              index (n+1) tl
-        | [] -> assert false
-      in
-      index 1 (List.rev generalized)
+          Printf.sprintf "'%s%s%s" prefix constr_symbols s
     in
-    let uvar i c =
-      `UVar (uvar_name i c, c)
+    let var_repr i c =
+      let _,c = split_constr c in
+      if is_generalized i then
+        `UVar (var_name i c, c)
+      else
+        `EVar (var_name i c, c)
     in
-    let is_generalized i = List.exists (fun (j,_) -> j=i) generalized in
     if filter_out t then `Ellipsis else
       match t.descr with
         | Ground g -> `Ground g
         | List t -> `List (repr t)
-        | Product (a,b) -> `Product (repr a, repr b)
+        | Product (a,b) -> 
+            let a = repr a in
+            let b = repr b in
+            `Product (a, b)
         | Zero -> `Zero
         | Variable -> `Variable
         | Succ t -> `Succ (repr t)
@@ -402,11 +398,7 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
         | Arrow (args,t) ->
             `Arrow (List.map (fun (opt,lbl,t) -> opt,lbl,repr t) args,
                     repr t)
-        | EVar (id,c) ->
-            if is_generalized id then
-              uvar id c
-            else
-              evar id c
+        | EVar (id,c) -> var_repr id c
         | Link t -> repr t
         | Record r ->
           let r = merge_record r in
@@ -418,8 +410,7 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
                    let r = repr ~generalized t in
                    (List.rev 
                      (List.map 
-                       (fun (i,c) -> 
-                          uvar_name ~generalized i c) g),r),o)
+                       (fun (i,c) -> var_name i c) g),r),o)
                  r.fields ;
               row    = Utils.may repr r.row;
               opt_row = Utils.may repr r.opt_row }
