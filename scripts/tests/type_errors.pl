@@ -107,4 +107,8 @@ correct('x = [foo=1] def f(z=x) = ignore(?(z.bar="aabb")) end f([foo=1, bar="aab
 incorrect('def f(x) = y = [ x with foo=1 ] ignore(x.foo) y end x = f([foo="aabb"]) x.foo^""');
 correct('r = [f = fun(x)->x] f = fun(x)->x.f(2)+0 ignore(f(r)) ignore(r.f(""))');
 
+section("PRODUCTS");
+correct("x = (1, 'aabb', 2.0)");
+incorrect("(1, 'aabb', 2.0) == (1,2)");
+
 print "Everything's good!\n" ;
