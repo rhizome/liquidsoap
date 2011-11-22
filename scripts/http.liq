@@ -15,7 +15,7 @@ def http.response(response) =
   codes  = http.codes
   status = codes[string_of(code)]
   headers = 
-    if not response.data.stream? then
+    if not ?response.data.stream then
       list.append([("Content-Length",
                     "#{string.length(static_data)}")],
                   headers)
