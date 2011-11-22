@@ -490,24 +490,44 @@ let print_repr f t =
                 row    = row;
                 opt_row = opt_row } ->
       Format.fprintf f "@[<1>[";
-      let _,vars =
-        Fields.fold
-          (fun lbl ((g,kind),o) (first,vars) ->
-            if not first then Format.fprintf f ", @," ;
-            let g = if g = [] then "" else ("∀" ^ String.concat " " g ^ " . ") in
-            let o = if o then "?" else "" in
-            Format.fprintf f "%s%s: %s" o lbl g;
-            let vars = print ~par:true vars kind in
-            false, vars)
-          r
-          (true,vars)
+      let vars =
+       if Fields.is_empty r then
+        begin
+         Format.fprintf f ":";
+         vars
+        end
+       else
+        begin
+         let _,vars =
+           Fields.fold
+            (fun lbl ((g,kind),o) (first,vars) ->
+              if not first then Format.fprintf f ", @," ;
+              let g = 
+                if not debug || g = [] then 
+                  "" 
+                else 
+                  ("∀" ^ String.concat " " g ^ " . ") 
+              in
+              let o = if o then "?" else "" in
+              Format.fprintf f "%s%s: %s" o lbl g;
+              let vars = print ~par:true vars kind in
+              false, vars)
+            r
+            (true,vars)
+         in
+         vars
+        end
       in
       let row_vars ~opt vars =
         function
           | Some row ->
-              Format.fprintf f ", @,";
-            if opt then Format.fprintf f "?";
-            print ~par vars row
+              if debug then
+               begin
+                Format.fprintf f ", @,";
+                if opt then Format.fprintf f "?";
+                print ~par vars row
+               end
+              else vars
           | None -> vars
       in
       let vars =

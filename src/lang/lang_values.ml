@@ -485,11 +485,12 @@ struct
         "["^(String.concat ", " (List.map print_value l))^"]"
     | Record r ->
         let s =
-          String.concat 
-            ", " 
-            (T.Fields.fold
-               (fun x v l -> (x ^ " = " ^ print_value v.v_value) :: l) 
-               r [])
+          if T.Fields.is_empty r then "=" else
+            String.concat 
+              ", " 
+              (T.Fields.fold
+                 (fun x v l -> (x ^ " = " ^ print_value v.v_value) :: l) 
+                 r [])
         in
           "["^ s ^ "]"
     | Ref a ->

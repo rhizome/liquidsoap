@@ -36,11 +36,3 @@ let () =
      let l = List.map fst l in
      let l = List.map Lang.string l in
      Lang.list ~t:Lang.string_t l)
-
-let () =
-  let opt_row = Lang.univ_t 1 in
-  Lang.add_builtin_base "record.empty" 
-    ~category:(string_of_category Liq)
-    ~descr:"An empty record."
-    (Lang.Record Lang_types.Fields.empty) 
-    (Lang.record_t ~opt_row Lang_types.Fields.empty)

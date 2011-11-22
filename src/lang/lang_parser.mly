@@ -326,6 +326,7 @@ expr:
   | STRING                           { mk (String $1) }
   | list                             { mk (List $1) }
   | record                           { mk (Record $1) }
+  | LBRA GETS RBRA                   { mk (Record Lang_types.Fields.empty) } 
   | expr FIELD VAR                   { mk (Field ($1, $3, None)) }
   | QMARK LPAR RECORD_FIELD GETS expr RPAR
                                      { deep_field ~opt:$5 $3 }
@@ -419,6 +420,7 @@ cexpr:
   | STRING                           { mk (String $1) }
   | list                             { mk (List $1) }
   | record                           { mk (Record $1) }
+  | LBRA GETS RBRA                   { mk (Record Lang_types.Fields.empty) }
   | cexpr FIELD VAR                  { mk (Field ($1, $3, None)) }
   | QMARK LPAR RECORD_FIELD GETS expr RPAR
                                      { deep_field ~opt:$5 $3 }
