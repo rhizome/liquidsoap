@@ -132,6 +132,7 @@ rule token = parse
   | "elsif"  { ELSIF }
   | "->"     { YIELDS }
   | "with"   { WITH }
+  | "open"   { OPEN }
 
   | "%ogg"    { OGG }
   | "%vorbis" { VORBIS }

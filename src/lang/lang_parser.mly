@@ -205,7 +205,7 @@
 %token OGG FLAC VORBIS VORBIS_CBR VORBIS_ABR THEORA DIRAC SPEEX
 %token WAV VOAACENC AACPLUS MP3 MP3_VBR MP3_ABR EXTERNAL
 %token EOF
-%token FIELD WITH
+%token FIELD WITH OPEN
 %token BEGIN END GETS TILD
 %token <Doc.item * (string*string) list> DEF
 %token IF THEN ELSE ELSIF
@@ -286,6 +286,8 @@ exprs:
                                  mk (Let { doc=doc ; var=name ;
                                            gen = [] ; def=def ;
                                            body = $3 }) }
+  | OPEN LPAR expr RPAR exprs { mk (Open ($3,$5)) }
+
 cexprs:
   | cexpr s                  { $1 }
   | cexpr cexprs             { mk (Seq ($1,$2)) }
@@ -302,6 +304,7 @@ cexprs:
                                  mk (Let { doc=doc ; var=name ;
                                            gen = [] ; def=def ;
                                            body = $3 }) }
+  | OPEN LPAR expr RPAR exprs { mk (Open ($3,$5)) }
 
 /* General expressions.
  * The only difference with cexpr is the ability to start with an unary MINUS.
@@ -324,9 +327,9 @@ expr:
   | list                             { mk (List $1) }
   | record                           { mk (Record $1) }
   | expr FIELD VAR                   { mk (Field ($1, $3, None)) }
-  | QMARK LPAR RECORD_FIELD   GETS expr RPAR
+  | QMARK LPAR RECORD_FIELD GETS expr RPAR
                                      { deep_field ~opt:$5 $3 }
-  | RECORD_FIELD QMARK               { is_deep_field $1 }
+  | QMARK RECORD_FIELD               { is_deep_field $2 }
   | RECORD_FIELD                     { deep_field $1 }
   | LBRA expr WITH inner_record RBRA { replace_fields $2 $4 }
   | REF expr                         { mk (Ref $2) }
@@ -419,7 +422,7 @@ cexpr:
   | cexpr FIELD VAR                  { mk (Field ($1, $3, None)) }
   | QMARK LPAR RECORD_FIELD GETS expr RPAR
                                      { deep_field ~opt:$5 $3 }
-  | RECORD_FIELD QMARK               { is_deep_field $1 }
+  | QMARK RECORD_FIELD               { is_deep_field $2 }
   | RECORD_FIELD                     { deep_field $1 }
   | LBRA expr WITH inner_record RBRA { replace_fields $2 $4 }
   | REF expr                         { mk (Ref $2) }
@@ -520,9 +523,6 @@ binding:
         $1,var,body
     }
 
-fields:
-  | { [] }
-  | FIELD VAR fields { $2::$3 }
 var_fields_par:
   | VARLPAR { $1,[] }
   | VAR fields_par { $1,$2 }

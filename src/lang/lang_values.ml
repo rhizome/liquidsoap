@@ -144,6 +144,8 @@ and in_term =
      defined. *)
   | Replace_field of term * string * field_t
   | Is_field of term * string
+  (* Open a record in a term, ie put all its members as toplevel definitions. *)
+  | Open of term * term
   | Product of term * term
   | Ref     of term
   | Get     of term
@@ -197,16 +199,24 @@ let rec print_term v = match v.term with
           tl
       in
         (print_term hd)^"("^(String.concat "," tl)^")"
-  | Let _ | Seq _ | Get _ | Set _ 
-  | Field _ | Replace_field _ | Is_field _ -> assert false
+  | Let _ | Seq _ | Get _ | Set _
+  | Field _ | Replace_field _ | Is_field _ | Open _ -> assert false
 
 let rec free_vars tm = match tm.term with
   | Unit | Bool _ | Int _ | String _ | Float _ | Encoder _ ->
       Vars.empty
   | Var x -> Vars.singleton x
-  | Ref r | Get r | Field (r,_,_) -> free_vars r
+  | Ref r | Get r -> free_vars r
   | Replace_field (r,_,v) -> Vars.union (free_vars r) (free_vars v.rval)
+  | Field (r,_,t) ->
+    let t =
+      match t with
+        | Some t -> free_vars t
+        | None -> Vars.empty
+    in
+    Vars.union (free_vars r) t
   | Is_field (r,_) -> free_vars r
+  | Open (r, v) -> Vars.union (free_vars r) (free_vars v)
   | Product (a,b) | Seq (a,b) | Set (a,b) ->
       Vars.union (free_vars a) (free_vars b)
   | List l ->
@@ -258,11 +268,14 @@ let rec check_unused ~lib tm =
     | Var s -> Vars.remove s v
     | Unit | Bool _ | Int _ | String _ | Float _ | Encoder _ -> v
     | Ref r | Get r | Is_field (r,_) -> check v r
-    | Field (r,_,o) -> 
+    | Field (r,_,o) ->
        if o <> None then
          check (check v (Utils.get_some o)) r
        else
          check v r
+    | Open (r,e) ->
+      let v = check v r in
+      check v e
     | Product (a,b) | Set (a,b) -> check (check v a) b
     | Seq (a,b) -> check ~toplevel (check v a) b
     | List l -> List.fold_left check v l
@@ -353,21 +366,24 @@ let rec map_types f (gen:'a list) tm = match tm.term with
                          r) }
   | Field (r,x,o) ->
       { t = f gen tm.t ;
-        term = Field (map_types f gen r, x, 
+        term = Field (map_types f gen r, x,
                       Utils.may (map_types f gen) o) }
   | Is_field (r,x) ->
-      { t = f gen tm.t; 
+      { t = f gen tm.t;
         term = Is_field (map_types f gen r,x) }
   | Replace_field (r,x,v) ->
       { t = f gen tm.t ;
         term = Replace_field (map_types f gen r, x,
                               { v with rval = map_types f (v.rgen@gen) v.rval }) }
+  | Open (r,v) ->
+      { t = f gen tm.t ;
+        term = Open (map_types f gen r, map_types f gen v) }
   | App (hd,l) ->
       { t = f gen tm.t ;
         term = App (map_types f gen hd,
                     List.map (fun (lbl,v) -> lbl, map_types f gen v) l) }
   | Fun (fv,p,v) ->
-      let aux = 
+      let aux =
         fun (lbl,var,t,tm) -> lbl, var, f gen t, Utils.may (map_types f gen) tm
       in
         { t = f gen tm.t ;
@@ -402,6 +418,9 @@ let rec fold_types f gen x tm = match tm.term with
   | Replace_field (r,_,v) ->
       let x = fold_types f gen x r in
         fold_types f (v.rgen@gen) x (v.rval)
+  | Open (r,t) ->
+    let x = fold_types f gen x r in
+    fold_types f gen x t
   | Product (a,b) | Seq (a,b) | Set (a,b) ->
       fold_types f gen (fold_types f gen x a) b
   | App (tm,l) ->
@@ -724,6 +743,17 @@ let rec check ?(print_toplevel=false) ~level ~env e =
                                opt_row = r.T.opt_row})
       in
       e.t >: rt
+  | Open (r,t) ->
+    check ~level ~env r;
+    r.t <: record_t ~level ~row:true T.Fields.empty;
+    let fields =
+      match (T.deref r.t).T.descr with
+        | T.Record r -> r.T.fields
+        | _ -> assert false
+    in
+    let fields = T.Fields.fold (fun x (s,_) l -> (x,s)::l) fields [] in
+    let env = fields@env in
+    check ~level ~env t
   | Product (a,b) ->
       check ~level ~env a ; check ~level ~env b ;
       e.t >: mk (T.Product (a.t,b.t))
@@ -988,6 +1018,21 @@ let rec eval ~env tm =
           in
           let r = T.Fields.add x field r in
             mk (V.Record r)
+      | Open (r,v) ->
+        let fields =
+          match (eval ~env r).V.value with
+            | V.Record r -> r
+            | _ -> assert false
+        in
+        let rtf =
+          match (T.deref r.t).T.descr with
+            | T.Record r -> r.T.fields
+            | _ -> assert false
+        in
+        let g x = fst (fst (T.Fields.find x rtf)) in
+        let fields = T.Fields.fold (fun x v l -> (x,(g x,v.V.v_value))::l) fields [] in
+        let env = fields@env in
+        eval ~env v
       | Ref v -> mk (V.Ref (ref (eval ~env v)))
       | Get r ->
           begin match (eval ~env r).V.value with
