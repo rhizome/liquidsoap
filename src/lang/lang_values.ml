@@ -446,7 +446,7 @@ module V =
 struct
   type value = { mutable t : T.t ; value : in_value }
   and gvalue = { v_gen : T.cvar list ; v_value : value }
-  and full_env = (string * ((int*T.constraints)list*value)) list
+  and full_env = (string * (T.cvar list * value)) list
   and in_value =
     | Unit
     | Bool    of bool
@@ -467,8 +467,16 @@ struct
                  full_env * full_env * term
     (** For a foreign function only the arguments are visible,
       * the closure doesn't capture anything in the environment. *)
-    | FFI     of (string * string * value option) list *
-                 full_env * (full_env -> T.t -> value)
+    | FFI     of ffi
+  and ffi =
+      {
+        (** Arguments of the foreign function. *)
+        ffi_args : (string * string * value option) list;
+        (** Parameters already passed. *)
+        ffi_applied : full_env;
+        (** Evaluation of the foreign function. *)
+        ffi_eval : full_env -> T.t -> value;
+      }
 
   type env = (string*value) list
 
@@ -540,20 +548,25 @@ struct
           | lbl, var, Some v -> lbl, var, Some (map_types f gen v)
         in
           { t = f gen v.t ;
-            value = 
+            value =
               Fun (List.map aux p,
                    map_env (map_types f gen) applied,
                    map_env (map_types f gen) env,
                    tm_map_types f gen tm) }
-    | FFI (p,applied,ffi) ->
+    | FFI ffi ->
         let aux = function
           | lbl, var, None -> lbl, var, None
           | lbl, var, Some v -> lbl, var, Some (map_types f gen v)
         in
+        let ffi =
+          {
+            ffi_args = List.map aux ffi.ffi_args;
+            ffi_applied = map_env (map_types f gen) ffi.ffi_applied;
+            ffi_eval = ffi.ffi_eval;
+          }
+        in
           { t = f gen v.t ;
-            value = FFI (List.map aux p,
-                         map_env (map_types f gen) applied,
-                         ffi) }
+            value = FFI ffi }
     (* In the case on instantiate (currently the only use of map_types)
      * no type instantiation should occur in the following cases (f should
      * be the identity): one cannot change the type of such objects once
@@ -896,7 +909,7 @@ let get_name f =
   try
     builtins#iter
       (fun name (_,v) -> match v.V.value with
-         | V.FFI (_,_,ff) when f == ff -> raise (F name)
+         | V.FFI { V.ffi_eval = ff } when f == ff -> raise (F name)
          | _ -> ()) ;
     "<ff>"
   with
@@ -1086,10 +1099,10 @@ and apply ~t f l =
           p,pe,
           (fun pe _ -> eval ~env:(List.rev_append pe e) body),
           (fun p pe -> mk (V.Fun (p,pe,e,body)))
-      | V.FFI (p,pe,f) ->
-          p,pe,
-          (fun pe t -> f (List.rev pe) t),
-          (fun p pe -> mk (V.FFI (p,pe,f)))
+      | V.FFI ffi ->
+          ffi.V.ffi_args,ffi.V.ffi_applied,
+          (fun pe t -> ffi.V.ffi_eval (List.rev pe) t),
+          (fun p pe -> mk (V.FFI { ffi with V.ffi_args = p; ffi_applied = pe }))
       | _ -> assert false
   in
   let pe,p =

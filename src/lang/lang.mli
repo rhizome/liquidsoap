@@ -46,9 +46,13 @@ and in_value =
   | Ref     of value ref
   | Fun     of (string * string * value option) list *
                full_env * full_env * Lang_values.term
-  | FFI     of (string * string * value option) list *
-               full_env *
-               (full_env -> t -> value)
+  | FFI     of ffi
+and ffi =
+    {
+      ffi_args : (string * string * value option) list;
+      ffi_applied : full_env;
+      ffi_eval : full_env -> t -> value;
+    }
 
 type env = (string*value) list
 

@@ -254,7 +254,8 @@ let val_fun p ~ret_t f =
   let f env t = f (List.map (fun (x,(g,v)) -> assert (g=[]) ; x,v) env) t in
   let t = fun_t (List.map (fun (l,_,t,d) -> d<>None,l,t) p) ret_t in
   let p' = List.map (fun (l,x,t,d) -> l,x,d) p in
-    mk ~t (FFI (p',[],f))
+  let ffi = { ffi_args = p'; ffi_applied = []; ffi_eval = f} in
+    mk ~t (FFI ffi)
 
 let val_cst_fun p c =
   let t = fun_t (List.map (fun (l,t,d) -> d<>None,l,t) p) c.t in
@@ -270,7 +271,9 @@ let val_cst_fun p c =
       | Bool i -> f (Term.Bool i)
       | Float i -> f (Term.Float i)
       | String i -> f (Term.String i)
-      | _ -> mk ~t (FFI (p',[],fun _ _ -> c))
+      | _ ->
+        let ffi = { ffi_args = p'; ffi_applied = []; ffi_eval = fun _ _ -> c } in
+        mk ~t (FFI ffi)
 
 let metadata m =
   list
@@ -399,11 +402,10 @@ let register_builtin ~doc name v =
 let add_builtin ~category ~descr ?(flags=[]) name proto return_t f =
   let t = builtin_type proto return_t in
   let f env t = f (List.map (fun (s,(l,v)) -> assert (l=[]) ; s,v) env) t in
+  let ffi = { ffi_args = List.map (fun (lbl,_,opt,_) -> lbl,lbl,opt) proto; ffi_applied = []; ffi_eval = f } in
   let value =
     { t = t ;
-      value = FFI (List.map (fun (lbl,_,opt,_) -> lbl,lbl,opt) proto,
-                   [],
-                   f) }
+      value = FFI ffi }
   in
     register_builtin
       ~doc:(to_doc category flags descr proto return_t)
@@ -550,13 +552,13 @@ let iter_sources f v =
              | _,_,Some v -> iter_value v
              | _ -> ())
           proto
-    | FFI (proto,pe,_) ->
-        List.iter (fun (_,(_,v)) -> iter_value v) pe ;
+    | FFI ffi (*proto,pe,_*) ->
+        List.iter (fun (_,(_,v)) -> iter_value v) ffi.ffi_applied ;
         List.iter
           (function
              | _,_,Some v -> iter_value v
              | _ -> ())
-          proto
+          ffi.ffi_args
   in
     iter_value v
 
