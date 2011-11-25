@@ -510,6 +510,10 @@ binding:
   | VAR GETS expr {
       (Doc.none (),[]),$1,$3
     }
+  | RECORD_FIELD GETS expr {
+      let e,xx = $1 in
+        (Doc.none (),[]),e,replace_deep_field (mk (Var e)) xx $3
+    }
   | DEF VAR g exprs END {
       $1,$2,$4
   }
