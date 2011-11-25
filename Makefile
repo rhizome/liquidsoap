@@ -50,6 +50,7 @@ endif
                   Printf.sprintf \"Liquidsoap/%s (%s; OCaml %s)\" \
                      version Sys.os_type Sys.ocaml_version" >> src/configure.ml
 	@echo "let () = record_backtrace true" >> src/configure.ml
+	-chmod a-w src/configure.ml
 	@echo Creating scripts/liquidsoap.logrotate
 	@cat scripts/liquidsoap.logrotate.in | \
 	  sed -e s:@localstatedir@:$(localstatedir): > scripts/liquidsoap.logrotate

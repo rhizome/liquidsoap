@@ -1606,6 +1606,7 @@ let rec to_json_compact v =
     | Lang.Request _ -> "\"<request>\""
     | Lang.FFI _
     | Lang.Fun _ -> "\"<fun>\""
+    | Lang.Quote _ -> "\"<term>\""
 
 let rec to_json_pp f v =
   match v.Lang.value with

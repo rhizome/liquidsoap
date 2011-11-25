@@ -431,6 +431,10 @@ let options =
       Arg.Unit (fun _ -> Server.conf_socket#set false),
       "Disable the unix socket." ;
 
+      ["-s";"--saml"],
+      Arg.Unit Saml.enable,
+      "Enable SAML extensions of the language.";
+
       ["--list-plugins-xml"],
       Arg.Unit (fun () ->
                   secondary_task := true ;

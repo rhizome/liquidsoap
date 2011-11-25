@@ -149,6 +149,7 @@ and in_term =
   | Product of term * term
   | Ref     of term
   | Get     of term
+  (* [Set (r,v)] sets a reference to a value. *)
   | Set     of term * term
   | Let     of let_t
   | Var     of string
@@ -468,6 +469,8 @@ struct
     (** For a foreign function only the arguments are visible,
       * the closure doesn't capture anything in the environment. *)
     | FFI     of ffi
+    (** A quoted term. Only used for compiling SAML code. *)
+    | Quote   of (string * term) list * term
   and ffi =
       {
         (** Arguments of the foreign function. *)
@@ -476,6 +479,9 @@ struct
         ffi_applied : full_env;
         (** Evaluation of the foreign function. *)
         ffi_eval : full_env -> T.t -> value;
+        (** The unnamed arguments should be quoted (only used in SAML, should be
+            [false] in other cases). *)
+        ffi_meta : bool;
       }
 
   type env = (string*value) list
@@ -519,6 +525,7 @@ struct
         let args = List.map f l in
         Printf.sprintf "fun (%s) -> %s" (String.concat "," args) (print_term x)
     | Fun _ | FFI _ -> "<fun>"
+    | Quote _ -> "<term>"
 
   let map_env f env = List.map (fun (s,(g,v)) -> s, (g, f v)) env
 
@@ -542,6 +549,11 @@ struct
                  (fun v ->
                     { v with v_value = map_types f (v.v_gen@gen) v.v_value })
                  r) }
+    | Quote _ ->
+      {
+        t = f gen v.t;
+        value = v.value
+      }
     | Fun (p,applied,env,tm) ->
         let aux = function
           | lbl, var, None -> lbl, var, None
@@ -560,6 +572,7 @@ struct
         in
         let ffi =
           {
+            ffi with
             ffi_args = List.map aux ffi.ffi_args;
             ffi_applied = map_env (map_types f gen) ffi.ffi_applied;
             ffi_eval = ffi.ffi_eval;
@@ -888,11 +901,13 @@ let rec check ?(print_toplevel=false) ~level ~env e =
         check ~print_toplevel ~level:(level+1) ~env body ;
         e.t >: body.t
 
+let default_typing_env = ref []
+
 (* The simple definition for external use. *)
 let check ?(ignored=false) e =
   let print_toplevel = !Configure.display_types in
     try
-      check ~print_toplevel ~level:(List.length builtins#get_all) ~env:[] e ;
+      check ~print_toplevel ~level:(List.length builtins#get_all) ~env:(!default_typing_env) e ;
       if ignored && not (can_ignore e.t) then raise_ignored e ;
       pop_tasks ()
     with
@@ -997,7 +1012,7 @@ let rec eval ~env tm =
             mk (V.Record fields)
       | Field (r,x,o) ->
           begin match (eval ~env r).V.value with
-            | V.Record r -> 
+            | V.Record r ->
                 begin try
                   let v = T.Fields.find x r in
                     instantiate ~generalized:v.V.v_gen v.V.v_value
@@ -1084,9 +1099,23 @@ let rec eval ~env tm =
           ignore (eval ~env a) ;
           eval ~env b
       | App (f,l) ->
+          let f = eval ~env f in
+          let meta =
+            match f.V.value with
+              | V.FFI { V.ffi_meta = true } -> true
+              | _ -> false
+          in
           apply ~t:tm.t
-            (eval ~env f)
-            (List.map (fun (l,t) -> l, eval ~env t) l)
+            f
+            (List.map
+               (fun (l,t) ->
+                 l,
+                 if meta && l = "" then
+                   (* TODO: pass the term environment! *)
+                   mk (V.Quote ([],t))
+                 else
+                   eval ~env t
+               ) l)
 
 and apply ~t f l =
   let mk v = { V.t = t ; V.value = v } in

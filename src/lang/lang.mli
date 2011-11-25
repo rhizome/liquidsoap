@@ -47,11 +47,13 @@ and in_value =
   | Fun     of (string * string * value option) list *
                full_env * full_env * Lang_values.term
   | FFI     of ffi
+  | Quote   of (string * Lang_values.term) list * Lang_values.term
 and ffi =
     {
       ffi_args : (string * string * value option) list;
       ffi_applied : full_env;
       ffi_eval : full_env -> t -> value;
+      ffi_meta : bool;
     }
 
 type env = (string*value) list
@@ -83,6 +85,7 @@ val add_builtin :
   category:string ->
   descr:string ->
   ?flags:doc_flag list ->
+  ?meta:bool ->
   string ->
   proto -> t -> (env -> t -> value) ->
   unit
@@ -98,7 +101,7 @@ val add_builtin_base :
 type category =
   | Input (** Input. *)
   | Output (** Output. *)
-  | Conversions     (** Conversions of stream type *)
+  | Conversions (** Conversions of stream type *)
   | TrackProcessing (** Operations on tracks (e.g. mixing, etc.). *)
   | SoundProcessing (** Operations on sound (e.g. compression, etc.). *)
   | VideoProcessing (** Operations on video. *)

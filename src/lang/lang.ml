@@ -254,7 +254,7 @@ let val_fun p ~ret_t f =
   let f env t = f (List.map (fun (x,(g,v)) -> assert (g=[]) ; x,v) env) t in
   let t = fun_t (List.map (fun (l,_,t,d) -> d<>None,l,t) p) ret_t in
   let p' = List.map (fun (l,x,t,d) -> l,x,d) p in
-  let ffi = { ffi_args = p'; ffi_applied = []; ffi_eval = f} in
+  let ffi = { ffi_args = p'; ffi_applied = []; ffi_eval = f; ffi_meta = false } in
     mk ~t (FFI ffi)
 
 let val_cst_fun p c =
@@ -272,7 +272,7 @@ let val_cst_fun p c =
       | Float i -> f (Term.Float i)
       | String i -> f (Term.String i)
       | _ ->
-        let ffi = { ffi_args = p'; ffi_applied = []; ffi_eval = fun _ _ -> c } in
+        let ffi = { ffi_args = p'; ffi_applied = []; ffi_eval = (fun _ _ -> c); ffi_meta = false } in
         mk ~t (FFI ffi)
 
 let metadata m =
@@ -398,11 +398,10 @@ let register_builtin ~doc name v =
         let g = T.filter_vars (fun _ -> true) v.t in
         Term.builtins#register ~doc name (g,v)
 
-
-let add_builtin ~category ~descr ?(flags=[]) name proto return_t f =
+let add_builtin ~category ~descr ?(flags=[]) ?(meta=false) name proto return_t f =
   let t = builtin_type proto return_t in
   let f env t = f (List.map (fun (s,(l,v)) -> assert (l=[]) ; s,v) env) t in
-  let ffi = { ffi_args = List.map (fun (lbl,_,opt,_) -> lbl,lbl,opt) proto; ffi_applied = []; ffi_eval = f } in
+  let ffi = { ffi_args = List.map (fun (lbl,_,opt,_) -> lbl,lbl,opt) proto; ffi_applied = []; ffi_eval = f; ffi_meta = meta } in
   let value =
     { t = t ;
       value = FFI ffi }
@@ -535,7 +534,7 @@ let iter_sources f v =
                      | None -> ()) proto
   and iter_value v = match v.value with
     | Source s -> f s
-    | Unit | Bool _ | Int _ | Float _ | String _ | Request _ | Encoder _ -> ()
+    | Unit | Bool _ | Int _ | Float _ | String _ | Request _ | Encoder _ | Quote _ -> ()
     | List l -> List.iter iter_value l
     | Record r -> 
         T.Fields.iter (fun _ a -> iter_value a.v_value) r
