@@ -31,13 +31,13 @@ let register_builtins () =
     (fun args t ->
       let fname = Lang.to_string (List.assoc "file" args) in
       let v = List.assoc "" args in
-      let env,v =
+      let env,venv,v =
         match v.Lang.value with
-          | Lang.Quote (env, v) -> env, v
+          | Lang.Quote (env,venv,v) -> env,venv,v
           | _ -> assert false
       in
-      let venv = List.map (fun (x,(c,v)) -> x,v) V.builtins#get_all in
-      let v = SV.reduce ~venv env v in
+      (* let venv = List.map (fun (x,(c,v)) -> x,v) V.builtins#get_all in *)
+      let v = SV.reduce ~venv ~env v in
       Printf.printf "EMIT: %s\n\n%!" fname;
       Printf.printf "BEGIN\n%s\nEND\n%!" (SB.Emitter_C.emit_decls (SV.emit "out" v));
       assert false
@@ -47,6 +47,5 @@ let register_builtins () =
 (** Enable SAML extensions. *)
 let enable () =
   assert (not !enabled);
-  V.default_typing_env := typing_env @ !V.default_typing_env;
   register_builtins ();
   enabled := true

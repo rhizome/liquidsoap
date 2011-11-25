@@ -200,8 +200,10 @@ let rec print_term v = match v.term with
           tl
       in
         (print_term hd)^"("^(String.concat "," tl)^")"
+  | Field (r,x,_) -> Printf.sprintf "%s.%s" (print_term r) x
+  | Replace_field (r,x,v) -> Printf.sprintf "[%s with %s = %s]" (print_term r) x (print_term v.rval)
   | Let _ | Seq _ | Get _ | Set _
-  | Field _ | Replace_field _ | Is_field _ | Open _ -> assert false
+  | Is_field _ | Open _ -> assert false
 
 let rec free_vars tm = match tm.term with
   | Unit | Bool _ | Int _ | String _ | Float _ | Encoder _ ->
@@ -470,7 +472,7 @@ struct
       * the closure doesn't capture anything in the environment. *)
     | FFI     of ffi
     (** A quoted term. Only used for compiling SAML code. *)
-    | Quote   of (string * term) list * term
+    | Quote   of (string * term) list * env * term
   and ffi =
       {
         (** Arguments of the foreign function. *)
@@ -486,8 +488,7 @@ struct
             emitted by SAML). *)
         ffi_external : string option;
       }
-
-  type env = (string*value) list
+  and env = (string*value) list
 
   let rec print_value v = match v.value with
     | Unit     -> "()"
@@ -904,13 +905,11 @@ let rec check ?(print_toplevel=false) ~level ~env e =
         check ~print_toplevel ~level:(level+1) ~env body ;
         e.t >: body.t
 
-let default_typing_env = ref []
-
 (* The simple definition for external use. *)
 let check ?(ignored=false) e =
   let print_toplevel = !Configure.display_types in
     try
-      check ~print_toplevel ~level:(List.length builtins#get_all) ~env:(!default_typing_env) e ;
+      check ~print_toplevel ~level:(List.length builtins#get_all) ~env:[] e ;
       if ignored && not (can_ignore e.t) then raise_ignored e ;
       pop_tasks ()
     with
@@ -1114,8 +1113,9 @@ let rec eval ~env tm =
                (fun (l,t) ->
                  l,
                  if meta && l = "" then
-                   (* TODO: pass the term environment! *)
-                   mk (V.Quote ([],t))
+                   let env = List.map (fun (x,(_,v)) -> x,v) env in
+                   (* TODO: also pass the term environment! *)
+                   mk (V.Quote ([],env,t))
                  else
                    eval ~env t
                ) l)

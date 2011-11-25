@@ -15,20 +15,21 @@ end
 
 (** An operation. *)
 type op =
-  (** [Load p] loads memory pointed by p. *)
-  | Load
-  (** [Store (p,v)] stores value v in memory pointed by p. *)
-  | Store
   | FAdd | FSub | FMul | FDiv
   (* | If_then_else *)
   | Call of string
 
 (** An expression. *)
 type expr =
+  | Let of string * T.t * prog
   | Float of float
   | Ident of string
+  | Alloc of (T.t * prog)
+  (** [Load p] loads memory pointed by p. *)
+  | Load of prog
+  (** [Store (p,v)] stores value v in memory pointed by p. *)
+  | Store of prog * prog
   | Op of op * prog array
-  | Sizeof of T.t
 
 (** A program. *)
 and prog = expr list
@@ -51,20 +52,30 @@ module Emitter_C = struct
       Printf.sprintf "struct { %s }" s
     | T.Ptr t -> Printf.sprintf "%s*" (emit_type t)
 
-  let rec emit_expr = function
-    | Float f -> Printf.sprintf "%f" f
-    | Ident x -> x
-    | Op (op, args) ->
-      let args = Array.map (fun arg -> match arg with [e] -> emit_expr e | _ -> assert false) args in
-      (
-        match op with
-          | FMul ->
-            Printf.sprintf "(%s * %s)" args.(0) args.(1)
-          | Call f ->
-            let args = Array.to_list args in
-            let args = String.concat ", " args in
-            Printf.sprintf "%s(%s)" f args
-      )
+  let rec emit_expr e =
+    let prog_expr p = match p with [e] -> e | _ -> assert false in
+    match e with
+      | Let (x,_,[Alloc (t,p)]) ->
+        Printf.sprintf "%s %s = malloc(sizeof(%s)); %s = %s" (emit_type (T.Ptr t)) x (emit_type t) x (emit_expr (prog_expr p))
+      | Alloc (t,p) ->
+        (* TODO *)
+        Printf.sprintf "malloc(sizeof(%s))" (emit_type t)
+      | Let (x,t,p) -> Printf.sprintf "%s %s = %s" (emit_type t) x (emit_expr (prog_expr p))
+      | Float f -> Printf.sprintf "%f" f
+      | Ident x -> x
+      | Load x -> Printf.sprintf "*%s" (emit_expr (prog_expr x))
+      | Store (x,v) -> Printf.sprintf "%s = %s" (emit_expr (prog_expr x)) (emit_expr (prog_expr v))
+      | Op (op, args) ->
+        let args = Array.map (fun arg -> emit_expr (prog_expr arg)) args in
+        (
+          match op with
+            | FMul ->
+              Printf.sprintf "(%s * %s)" args.(0) args.(1)
+            | Call f ->
+              let args = Array.to_list args in
+              let args = String.concat ", " args in
+              Printf.sprintf "%s(%s)" f args
+        )
 
   let rec emit_prog ?(return=true) prog =
     let emit_prog ?(return=return) = emit_prog ~return in

@@ -47,7 +47,7 @@ and in_value =
   | Fun     of (string * string * value option) list *
                full_env * full_env * Lang_values.term
   | FFI     of ffi
-  | Quote   of (string * Lang_values.term) list * Lang_values.term
+  | Quote   of (string * Lang_values.term) list * (string * Lang_values.V.value) list * Lang_values.term
 and ffi =
     {
       ffi_args : (string * string * value option) list;
