@@ -205,9 +205,8 @@ synth = synth/keyboard.ml synth/synth_op.ml
 $(call conditional_compilation,synth,$(W_DSSI),synth/dssi_op.ml)
 
 builtins = \
-  lang/lang_builtins.ml \
-  lang/builtins_record.ml \
-	$(if $(W_YOJSON),lang/builtins_json.ml)
+  lang/lang_builtins.ml lang/builtins_record.ml lang/saml_builtins.ml \
+	$(if $(W_YOJSON),lang/builtins_json.ml)	
 
 $(call conditional_compilation,builtins,$(W_LO),lang/builtins_lo.ml)
 $(call conditional_compilation,builtins,$(W_MAGIC),lang/builtins_magic.ml)
@@ -247,14 +246,13 @@ $(call conditional_compilation,operators,$(W_GD),operators/video_text_gd.ml)
 liquidsoap_sources += \
 	lang/saml_backend.ml lang/lang_types.ml lang/lang_values.ml \
 	lang/lang_encoders.ml lang/lang_parser.ml lang/lang_lexer.ml \
-	lang/lang_pp.ml lang/lang.ml \
-	lang/saml_values.ml lang/saml_builtins.ml lang/saml.ml \
+	lang/lang_pp.ml lang/lang.ml lang/saml_values.ml \
 	tools/start_stop.ml tools/ioRing.ml tools/icecast_utils.ml \
 	$(video_converters) $(audio_converters) $(ogg_demuxer) $(protocols) \
 	$(sources) $(conversions) $(outputs) $(operators) \
 	$(encoders) $(ogg_muxer) $(io) \
 	$(analyze) $(playlists) $(visualization) $(synth) $(decoders) \
-	shebang.ml $(builtins) main.ml
+	shebang.ml $(builtins) lang/saml.ml main.ml
 
 include $(top_srcdir)/Makefile.rules
 

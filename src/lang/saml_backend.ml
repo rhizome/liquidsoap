@@ -21,6 +21,7 @@ type op =
   | Store
   | FAdd | FSub | FMul | FDiv
   (* | If_then_else *)
+  | Call of string
 
 (** An expression. *)
 type expr =
@@ -50,14 +51,26 @@ module Emitter_C = struct
       Printf.sprintf "struct { %s }" s
     | T.Ptr t -> Printf.sprintf "%s*" (emit_type t)
 
-  let emit_expr = function
+  let rec emit_expr = function
     | Float f -> Printf.sprintf "%f" f
     | Ident x -> x
+    | Op (op, args) ->
+      let args = Array.map (fun arg -> match arg with [e] -> emit_expr e | _ -> assert false) args in
+      (
+        match op with
+          | FMul ->
+            Printf.sprintf "(%s * %s)" args.(0) args.(1)
+          | Call f ->
+            let args = Array.to_list args in
+            let args = String.concat ", " args in
+            Printf.sprintf "%s(%s)" f args
+      )
 
-  let rec emit_prog prog =
+  let rec emit_prog ?(return=true) prog =
+    let emit_prog ?(return=return) = emit_prog ~return in
     match prog with
-      | [] -> "return;"
-      | [e] -> Printf.sprintf "return %s;" (emit_expr e)
+      | [] -> if return then "return;" else assert false
+      | [e] -> Printf.sprintf "%s%s;" (if return then "return " else "") (emit_expr e)
       | e::ee -> (emit_expr e) ^ "\n" ^ emit_prog ee
 
   let emit_decl = function

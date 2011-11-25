@@ -54,6 +54,7 @@ and ffi =
       ffi_applied : full_env;
       ffi_eval : full_env -> t -> value;
       ffi_meta : bool;
+      ffi_external : string option;
     }
 
 type env = (string*value) list
@@ -86,6 +87,7 @@ val add_builtin :
   descr:string ->
   ?flags:doc_flag list ->
   ?meta:bool ->
+  ?extern:string ->
   string ->
   proto -> t -> (env -> t -> value) ->
   unit

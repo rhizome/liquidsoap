@@ -34,9 +34,9 @@ let string_of_category = function
   | Interaction -> "Interaction"
   | Other   -> "Other"
 
-let add_builtin ~cat ~descr ?flags name proto ret_t f =
+let add_builtin ~cat ~descr ?flags ?extern name proto ret_t f =
   Lang.add_builtin ~category:(string_of_category cat)
-    ~descr ?flags name proto ret_t (fun p _ -> f p)
+    ~descr ?flags ?extern name proto ret_t (fun p _ -> f p)
 
 let () =
   Lang.add_builtin_base
@@ -438,8 +438,8 @@ let () =
 
 let () =
   let t = Lang.univ_t ~constraints:[Lang_types.Num] 1 in
-  let register_op doc name op_int op_float =
-    add_builtin name ~cat:Math ~descr:(Printf.sprintf "%s of numbers." doc)
+  let register_op ?extern doc name op_int op_float =
+    add_builtin name ~cat:Math ~descr:(Printf.sprintf "%s of numbers." doc) ?extern
       ["",t,None,None;"",t,None,None] t
       (fun p ->
          match p with
@@ -449,7 +449,7 @@ let () =
                Lang.float (op_float a b)
            | _ -> assert false)
   in
-    register_op "Multiplication" "*" ( * ) ( *. ) ;
+    register_op ~extern:"mul" "Multiplication" "*" ( * ) ( *. ) ;
     register_op "Division" "/" (/) (/.) ;
     register_op "Addition" "+" (+) (+.) ;
     register_op "Substraction " "-" (-) (-.) ;

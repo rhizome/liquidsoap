@@ -482,6 +482,9 @@ struct
         (** The unnamed arguments should be quoted (only used in SAML, should be
             [false] in other cases). *)
         ffi_meta : bool;
+        (** Name of the external function to call (used for builtins in code
+            emitted by SAML). *)
+        ffi_external : string option;
       }
 
   type env = (string*value) list
@@ -496,34 +499,34 @@ struct
     | Request s -> "<request>"
     | Encoder e -> Encoder.string_of_format e
     | List l ->
-        "["^(String.concat ", " (List.map print_value l))^"]"
+      "["^(String.concat ", " (List.map print_value l))^"]"
     | Record r ->
-        let s =
-          if T.Fields.is_empty r then "=" else
-            String.concat 
-              ", " 
-              (T.Fields.fold
-                 (fun x v l -> (x ^ " = " ^ print_value v.v_value) :: l) 
-                 r [])
-        in
-          "["^ s ^ "]"
+      let s =
+        if T.Fields.is_empty r then "=" else
+          String.concat 
+            ", " 
+            (T.Fields.fold
+               (fun x v l -> (x ^ " = " ^ print_value v.v_value) :: l) 
+               r [])
+      in
+      "["^ s ^ "]"
     | Ref a ->
-        Printf.sprintf "ref(%s)" (print_value !a)
+      Printf.sprintf "ref(%s)" (print_value !a)
     | Product (a,b) ->
-        Printf.sprintf "(%s,%s)" (print_value a) (print_value b)
+      Printf.sprintf "(%s,%s)" (print_value a) (print_value b)
     | Fun ([],_,_,x) when is_ground x -> "{"^print_term x^"}"
     | Fun (l,_,_,x) when is_ground x -> 
-        let f (label,_,value) =
-          match label, value with
-            | "",    None -> "_"
-            | "",    Some v -> Printf.sprintf "_=%s" (print_value v)
-            | label, Some v -> 
-                Printf.sprintf "~%s=%s" label (print_value v)
-            | label, None ->
-                Printf.sprintf "~%s" label
-        in
-        let args = List.map f l in
-        Printf.sprintf "fun (%s) -> %s" (String.concat "," args) (print_term x)
+      let f (label,_,value) =
+        match label, value with
+          | "",    None -> "_"
+          | "",    Some v -> Printf.sprintf "_=%s" (print_value v)
+          | label, Some v -> 
+            Printf.sprintf "~%s=%s" label (print_value v)
+          | label, None ->
+            Printf.sprintf "~%s" label
+      in
+      let args = List.map f l in
+      Printf.sprintf "fun (%s) -> %s" (String.concat "," args) (print_term x)
     | Fun _ | FFI _ -> "<fun>"
     | Quote _ -> "<term>"
 
