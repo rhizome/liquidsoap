@@ -157,7 +157,9 @@ let rec emit_prog tm =
   match tm.term with
     | Float f -> [B.Float f]
     | Var x -> [B.Ident x]
-    | Ref r -> [B.Alloc (emit_type r.t, emit_prog r)]
+    | Ref r ->
+      let tmp = fresh_ref () in
+      [B.Let (tmp, [B.Alloc (emit_type r.t)]); B.Store ([B.Ident tmp], emit_prog r); B.Ident tmp]
     | Get r -> [B.Load (emit_prog r)]
     | Set (r,v) -> [B.Store (emit_prog r, emit_prog v)]
     | Seq (a,b) -> (emit_prog a)@(emit_prog b)
