@@ -136,7 +136,7 @@ let fresh_ref =
   let n = ref 0 in
   fun () ->
     incr n;
-    Printf.sprintf "saml_ref_%d" !n
+    Printf.sprintf "saml_ref%d" !n
 
 (** Extract the state from a term. *)
 (* TODO: in x = ref r, check that r does not have free variables other than
@@ -260,7 +260,22 @@ let emit name ~env ~venv tm =
     let r = List.map (fun (x,_) -> f x) refs in
     r@prog
   in
-  let state_t = B.T.Ptr (B.T.Struct refs_t) in
+  let state_t = B.T.Struct refs_t in
+  let alloc =
+    let refs =
+      List.map
+        (fun (x,p) ->
+          let s = [B.Load [B.Ident "state"]] in
+          let r = [B.Field (s, x)] in
+          let r = [B.Address_of r] in
+          B.Store (r, p)
+        ) refs
+    in
+    [B.Let ("state", [B.Alloc state_t])]@refs@[B.Ident "state"]
+  in
+  let free = [B.Free [B.Ident "state"]] in
   [
-    B.Decl ((name, ["state", state_t; "now",B.T.Float; "period",B.T.Float], emit_type tm.t), prog)
+    B.Decl ((name^"_alloc", [], B.T.Ptr state_t), alloc);
+    B.Decl ((name^"_free", ["state", B.T.Ptr state_t], B.T.Void), free);
+    B.Decl ((name, ["state", B.T.Ptr state_t; "now",B.T.Float; "period",B.T.Float], emit_type tm.t), prog)
   ]

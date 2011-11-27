@@ -25,6 +25,7 @@ type expr =
   | Float of float
   | Ident of string
   | Alloc of T.t
+  | Free of prog
   (** [Load p] loads memory pointed by p. *)
   | Load of prog
   (** [Store (p,v)] stores value v in memory pointed by p. *)
@@ -85,6 +86,7 @@ module Emitter_C = struct
     | Ident x -> List.assoc x env.Env.vars
     | Float _ -> T.Float
     | Alloc t -> T.Ptr t
+    | Free _ -> T.Void
     | Load r ->
       (
         match prog_type ~env r with
@@ -143,6 +145,10 @@ module Emitter_C = struct
     let decl x t = Printf.sprintf "%s %s;" (emit_type t) x in
     match e with
       | Alloc t -> env, [Printf.sprintf "malloc(sizeof(%s));" (emit_type t)]
+      | Free p ->
+        let _, p = emit_prog ~env p in
+        let p = map_last (fun s -> Printf.sprintf "free(%s)" s) p in
+        env, p
       | Let (x,p) ->
         let t = prog_type ~env p in
         let _, p = emit_prog ~env p in
