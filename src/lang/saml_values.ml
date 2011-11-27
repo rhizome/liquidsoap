@@ -23,12 +23,24 @@ let meta_vars = ["now"; "period"]
 let make_term t =
   { term = t; t = T.fresh_evar ~level:(-1) ~pos:None }
 
+(* Convert values to terms. This is a hack necessary becausse FFI are values and
+   not terms (we should change this someday...). *)
 let rec term_of_value v =
-  Printf.printf "term_of_value: %s\n%!" (V.V.print_value v);
+  (* Printf.printf "term_of_value: %s\n%!" (V.V.print_value v); *)
   let term =
     match v.V.V.value with
       | V.V.Record r ->
-        let r = T.Fields.map (fun v -> { V.rgen = v.V.V.v_gen; V.rval = term_of_value v.V.V.v_value }) r in
+        let r =
+          let ans = ref T.Fields.empty in
+          T.Fields.iter
+            (fun x v ->
+              try
+                ans := T.Fields.add x { V.rgen = v.V.V.v_gen; V.rval = term_of_value v.V.V.v_value } !ans
+              with
+                | _ -> (* TODO: yes, this is a hack... *) ()
+            ) r;
+          !ans
+        in
         Record r
       | V.V.FFI ffi ->
         (
@@ -95,7 +107,8 @@ and reduce ?(venv=[]) ?(env=[]) tm =
             | _ -> true
         in
         if reducible then
-          let env = (l.var, l.def)::env in
+          (* TODO: alpha-conversion!!! *)
+          let env = (l.var,l.def)::env in
           (reduce ~env l.body).term
         else
           let l = { l with def = reduce ~env l.def; body = reduce ~env l.body } in
@@ -114,6 +127,7 @@ and reduce ?(venv=[]) ?(env=[]) tm =
                 x
               in
               let l = List.map (fun (l,v) -> find_arg l, v) l in
+              (* TODO: alpha-conversion!!! *)
               let env = l@env in
               let body = reduce ~env body in
               (* TODO: reduce optional args if no non-optional is present *)
@@ -240,6 +254,7 @@ let rec emit_prog tm =
     | Replace_field _ | Open _ | Let _ -> assert false
 
 let emit name ~env ~venv tm =
+  Printf.printf "emit: %s\n%!" (V.print_term tm);
   let prog = reduce ~venv ~env tm in
   Printf.printf "reduced: %s\n%!" (V.print_term prog);
   let prog = extract_state prog in

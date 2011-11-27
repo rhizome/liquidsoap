@@ -44,6 +44,7 @@ let register_builtins () =
       in
       Printf.printf "EMIT: %s\n\n%!" fname;
       Printf.printf "BEGIN\n%s\nEND\n%!" v;
+      let fname = "/tmp/"^fname in
       let oc = open_out fname in
       output_string oc v;
       close_out oc;

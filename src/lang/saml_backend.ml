@@ -236,6 +236,8 @@ module Emitter_C = struct
       let prog = String.concat "\n" prog in
       Printf.sprintf "%s %s(%s) {\n%s\n}\n" (emit_type t) name args prog
 
+  let includes = ["stdlib.h"]
+
   let emit_decls ?env d =
     Env.type_decls := [];
     let env =
@@ -245,5 +247,6 @@ module Emitter_C = struct
     in
     let d = List.map (emit_decl ~env) d in
     let td = List.map (fun (t,tn) -> Printf.sprintf "typedef %s %s;" t tn) !Env.type_decls in
-    String.concat "\n\n" (td@d)
+    let includes = List.map (fun f -> Printf.sprintf "#include <%s>" f) includes in
+    String.concat "\n\n" (includes@td@d)
 end
