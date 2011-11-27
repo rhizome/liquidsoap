@@ -37,9 +37,13 @@ let register_builtins () =
           | _ -> assert false
       in
       (* let venv = List.map (fun (x,(c,v)) -> x,v) V.builtins#get_all in *)
-      let v = SV.reduce ~venv ~env v in
+      let v = SV.emit "out" ~venv ~env v in
+      let v =
+        let env = SB.Emitter_C.Env.create () in
+        SB.Emitter_C.emit_decls ~env v
+      in
       Printf.printf "EMIT: %s\n\n%!" fname;
-      Printf.printf "BEGIN\n%s\nEND\n%!" (SB.Emitter_C.emit_decls (SV.emit "out" v));
+      Printf.printf "BEGIN\n%s\nEND\n%!" v;
       assert false
     );
   Saml_builtins.register ()

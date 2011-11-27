@@ -11,7 +11,7 @@ type t = V.term
 type stateful =
     {
       prog : term;
-      (* Notice that the list of refs is in reverse order! *)
+      (* Notice that refs are in reverse order! *)
       refs : (string * term) list;
     }
 
@@ -75,7 +75,7 @@ and reduce ?(venv=[]) ?(env=[]) tm =
             | _ -> Seq (a, b)
         )
       | Ref r -> Ref (reduce r)
-      | Get r -> Ref (reduce r)
+      | Get r -> Get (reduce r)
       | Set (r,v) -> Set (reduce r, reduce v)
       | Field (r,x,_) ->
         let r = reduce r in
@@ -88,8 +88,18 @@ and reduce ?(venv=[]) ?(env=[]) tm =
       | Replace_field _ -> failwith "reduce: Replace_field"
       | Open _ -> failwith "reduce: Open"
       | Let l ->
-        let env = (l.V.var, l.V.def)::env in
-        (reduce ~env l.body).term
+        (* TODO: don't reduce when used multiple times *)
+        let reducible =
+          match (T.deref l.def.t).T.descr with
+            | T.Constr { T.name = "ref" } -> false
+            | _ -> true
+        in
+        if reducible then
+          let env = (l.var, l.def)::env in
+          (reduce ~env l.body).term
+        else
+          let l = { l with def = reduce ~env l.def; body = reduce ~env l.body } in
+          Let l
       | App (a,l) ->
         let a = reduce a in
         let l = List.map (fun (l,v) -> l, reduce v) l in
@@ -118,8 +128,9 @@ and reduce ?(venv=[]) ?(env=[]) tm =
   in
   { tm with term = term }
 
-let subst x v tm =
-  reduce ~env:[x,v] tm
+let subst x v tm = reduce ~env:[x,v] tm
+
+let substs s tm = reduce ~env:s tm
 
 let fresh_ref =
   let n = ref 0 in
@@ -128,8 +139,15 @@ let fresh_ref =
     Printf.sprintf "saml_ref_%d" !n
 
 (** Extract the state from a term. *)
+(* TODO: in x = ref r, check that r does not have free variables other than
+   previously defined refs *)
 (* TODO: this could be merged with reduce? *)
 let rec extract_state tm =
+  (* Printf.printf "extract_state: %s\n%!" (V.print_term tm); *)
+  let mk tm' = { term = tm'; t = tm.t } in
+  let merge_state p a b =
+    { prog = p; refs = b.refs@a.refs }
+  in
   match tm.term with
     | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> { prog = tm; refs = [] }
     | Let ({ def = { term = Ref r } } as l) ->
@@ -138,6 +156,32 @@ let rec extract_state tm =
       let body = subst x (make_term (Var x')) l.body in
       let state = extract_state body in
       { state with refs = (x', r)::state.refs }
+    | Ref v ->
+      let v = extract_state v in
+      { v with prog = mk (Ref (v.prog)) }
+    | Get r ->
+      let r = extract_state r in
+      { r with prog = mk (Get (r.prog)) }
+    | Set (r,v) ->
+      let r = extract_state r in
+      let v = extract_state v in
+      merge_state (mk (Set (r.prog, v.prog))) r v
+    | Seq (a, b) ->
+      let a = extract_state a in
+      let b = extract_state b in
+      merge_state (mk (Seq (a.prog, b.prog))) a b
+    | App (f,a) ->
+      let ans = ref (extract_state f) in
+      let a =
+        List.map
+          (fun (l,v) ->
+            let v = extract_state v in
+            ans := merge_state !ans.prog !ans v;
+            l, v.prog
+          ) a
+      in
+      let ans = !ans in
+      { ans with prog = mk (App (ans.prog, a)) }
 
 let rec emit_type t =
   (* Printf.printf "emit_type: %s\n%!" (T.print t); *)
@@ -177,22 +221,46 @@ let rec emit_prog tm =
             let op =
               match x with
                 (* TODO: handle integer operations *)
-                | "mul" -> B.FMul
                 | "add" -> B.FAdd
+                | "sub" -> B.FSub
+                | "mul" -> B.FMul
+                | "div" -> B.FDiv
                 | _ -> B.Call x
             in
             [B.Op (op, l)]
           | _ -> assert false
       )
+    | Field (r,x,_) ->
+      (* Records are always passed by reference. *)
+      [B.Field ([B.Load (emit_prog r)], x)]
     | Unit -> assert false
     | Int _ -> assert false
     | Fun _ -> assert false
     | Record _ -> assert false
-    | Field _ | Replace_field _ | Open _ | Let _ -> assert false
+    | Replace_field _ | Open _ | Let _ -> assert false
 
-let emit name tm =
-  let prog = emit_prog tm in
-  let state_t = B.T.Ptr (B.T.Struct ["x", B.T.Float]) in (* TODO *)
+let emit name ~env ~venv tm =
+  let prog = reduce ~venv ~env tm in
+  Printf.printf "reduced: %s\n%!" (V.print_term prog);
+  let prog = extract_state prog in
+  Printf.printf "extracted: %s\n%!" (V.print_term prog.prog);
+  let refs = List.rev prog.refs in
+  let refs_t = List.map (fun (x,v) -> x, emit_type v.V.t) refs in
+  let refs = List.map (fun (x,v) -> x, emit_prog v) refs in
+  let prog = prog.prog in
+  let prog = emit_prog prog in
+  (* Alias state references. *)
+  let prog =
+    let f x =
+      let s = [B.Load [B.Ident "state"]] in
+      let r = [B.Field(s,x)] in
+      let r = [B.Address_of r] in
+      B.Let (x, r)
+    in
+    let r = List.map (fun (x,_) -> f x) refs in
+    r@prog
+  in
+  let state_t = B.T.Ptr (B.T.Struct refs_t) in
   [
     B.Decl ((name, ["state", state_t; "now",B.T.Float; "period",B.T.Float], emit_type tm.t), prog)
   ]

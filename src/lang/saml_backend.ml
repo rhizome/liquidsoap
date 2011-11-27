@@ -17,7 +17,6 @@ end
 (** An operation. *)
 type op =
   | FAdd | FSub | FMul | FDiv
-  (* | If_then_else *)
   | Call of string
 
 (** An expression. *)
@@ -30,6 +29,8 @@ type expr =
   | Load of prog
   (** [Store (p,v)] stores value v in memory pointed by p. *)
   | Store of prog * prog
+  | Field of prog * string
+  | Address_of of prog
   | Op of op * prog array
 
 (** A program. *)
@@ -52,25 +53,33 @@ module Emitter_C = struct
           ops : (op * (T.t list * T.t)) list;
         }
 
+    (* TODO: implement this in a functional way *)
+    let type_decls = ref []
+
     let add_var env (v,t) =
       { env with vars = (v,t)::env.vars }
 
     let add_vars env v =
       { env with vars = v@env.vars }
 
-    let create () =
+    let create ?(vars=[]) () =
       let f_f = [T.Float], T.Float in
       let ff_f = [T.Float; T.Float], T.Float in
       {
-        vars = [];
+        vars = vars;
         ops = [ FAdd, ff_f; FSub, ff_f; FMul, ff_f; FDiv, ff_f; Call "sin", f_f ]
       }
   end
 
-  let rec prepend_last s = function
+  let rec map_last f = function
     | [] -> assert false
-    | [x] -> [s^x]
-    | x::xx -> x::(prepend_last s xx)
+    | [x] ->
+      let x = String.sub x 0 (String.length x - 1) in
+      [f x ^ ";"]
+    | x::xx -> x::(map_last f xx)
+
+  let prepend_last s l =
+    map_last (fun x -> s^x) l
 
   let rec expr_type ~env = function
     | Ident x -> List.assoc x env.Env.vars
@@ -85,6 +94,14 @@ module Emitter_C = struct
     | Store _ -> T.Void
     | Op (op, _) -> snd (List.assoc op env.Env.ops)
     | Let _ -> T.Void
+    | Field (r,x) ->
+      let t =
+        match prog_type ~env r with
+          | T.Struct r -> r
+          | _ -> assert false
+      in
+      List.assoc x t
+    | Address_of r -> T.Ptr (prog_type ~env r)
 
   and prog_type ~env = function
     | [] -> T.Void
@@ -94,13 +111,26 @@ module Emitter_C = struct
       prog_type ~env ee
     | _::ee -> prog_type ~env ee
 
+  let type_decl =
+    let n = ref 0 in
+    fun t ->
+      try
+        List.assoc t !Env.type_decls
+      with
+        | Not_found ->
+          incr n;
+          let tn = Printf.sprintf "saml_type%d" !n in
+          Env.type_decls := (t,tn) :: !Env.type_decls;
+          tn
+
   let rec emit_type = function
     | T.Void -> "void"
     | T.Float -> "float"
     | T.Struct s ->
-      let s = List.map (fun (x,t) -> Printf.sprintf "%s %s;" (emit_type t) x) s in
-      let s = String.concat " " s in
-      Printf.sprintf "struct { %s }" s
+      let t = List.map (fun (x,t) -> Printf.sprintf "%s %s;" (emit_type t) x) s in
+      let t = String.concat " " t in
+      let t = Printf.sprintf "struct { %s }" t in
+      type_decl t
     | T.Ptr t -> Printf.sprintf "%s*" (emit_type t)
 
   let tmp_var =
@@ -109,24 +139,26 @@ module Emitter_C = struct
       incr n;
       Printf.sprintf "saml_tmp%d" !n
 
-  let rec emit_expr ?return ~env e =
+  let rec emit_expr ~env e =
     let decl x t = Printf.sprintf "%s %s;" (emit_type t) x in
     match e with
       | Alloc t -> env, [Printf.sprintf "malloc(sizeof(%s));" (emit_type t)]
       | Let (x,p) ->
         let t = prog_type ~env p in
         let _, p = emit_prog ~env p in
-        let p = prepend_last "x = " p in
+        let p = prepend_last (x^" = ") p in
         let env = Env.add_var env (x,t) in
         env, (decl x t)::p
       | Float f ->  env, [Printf.sprintf "%f;" f]
       | Ident x -> env, [Printf.sprintf "%s;" x]
-      | Load p ->
-        let t = prog_type ~env p in
-        let tmp = tmp_var () in
+      | Address_of p ->
         let _, p = emit_prog ~env p in
-        let p = prepend_last "*" p in
-        env, (decl tmp t)::p
+        let p = prepend_last "&" p in
+        env, p
+      | Load p ->
+        let _, p = emit_prog ~env p in
+        let p = map_last (fun s -> Printf.sprintf "(*%s)" s) p in
+        env, p
       | Store (x,p) ->
         let t = prog_type ~env x in
         let tmp = tmp_var () in
@@ -135,6 +167,13 @@ module Emitter_C = struct
         let _, p = emit_prog ~env p in
         let p = prepend_last (Printf.sprintf "*%s = " tmp) p in
         env, [decl tmp t]@x@p
+      | Field (r,x) ->
+        let _, p = emit_prog ~env r in
+        let p =
+          let f s = Printf.sprintf "%s.%s" s x in
+          map_last f p
+        in
+        env, p
       | Op (op, args) ->
         let tmp = Array.map (fun _ -> tmp_var ()) args in
         let argsp = Array.map (fun p -> snd (emit_prog ~env p)) args in
@@ -175,7 +214,14 @@ module Emitter_C = struct
       let prog = String.concat "\n" prog in
       Printf.sprintf "%s %s(%s) {\n%s\n}\n" (emit_type t) name args prog
 
-  let emit_decls d =
-    let env = Env.create () in
-    String.concat "\n" (List.map (emit_decl ~env) d)
+  let emit_decls ?env d =
+    Env.type_decls := [];
+    let env =
+      match env with
+        | Some env -> env
+        | None -> Env.create ()
+    in
+    let d = List.map (emit_decl ~env) d in
+    let td = List.map (fun (t,tn) -> Printf.sprintf "typedef %s %s;" t tn) !Env.type_decls in
+    String.concat "\n\n" (td@d)
 end

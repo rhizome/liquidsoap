@@ -199,11 +199,15 @@ let rec print_term v = match v.term with
           (fun (lbl,v) -> (if lbl="" then "" else lbl^"=")^(print_term v))
           tl
       in
-        (print_term hd)^"("^(String.concat "," tl)^")"
+        (print_term hd)^"("^(String.concat ", " tl)^")"
+  | Seq (a,b) -> Printf.sprintf "%s; %s" (print_term a) (print_term b)
   | Field (r,x,_) -> Printf.sprintf "%s.%s" (print_term r) x
   | Replace_field (r,x,v) -> Printf.sprintf "[%s with %s = %s]" (print_term r) x (print_term v.rval)
-  | Let _ | Seq _ | Get _ | Set _
-  | Is_field _ | Open _ -> assert false
+  | Get r -> Printf.sprintf "!%s" (print_term r)
+  | Set (r, v) -> Printf.sprintf "%s := %s" (print_term r) (print_term v)
+  | Open (r, v) -> Printf.sprintf "open(%s); %s" (print_term r) (print_term v)
+  | Let l -> Printf.sprintf "%s = %s; %s" l.var (print_term l.def) (print_term l.body)
+  | Is_field _ -> assert false
 
 let rec free_vars tm = match tm.term with
   | Unit | Bool _ | Int _ | String _ | Float _ | Encoder _ ->
