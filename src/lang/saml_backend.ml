@@ -159,6 +159,10 @@ module Emitter_C = struct
         let _, p = emit_prog ~env p in
         let p = map_last (fun s -> Printf.sprintf "(*%s)" s) p in
         env, p
+      | Store ([Ident x], p) ->
+        let _, p = emit_prog ~env p in
+        let p = prepend_last (Printf.sprintf "*%s = " x) p in
+        env, p
       | Store (x,p) ->
         let t = prog_type ~env x in
         let tmp = tmp_var () in
@@ -175,25 +179,37 @@ module Emitter_C = struct
         in
         env, p
       | Op (op, args) ->
-        let tmp = Array.map (fun _ -> tmp_var ()) args in
-        let argsp = Array.map (fun p -> snd (emit_prog ~env p)) args in
-        let argsp = Array.mapi (fun i p -> prepend_last (tmp.(i)^" = ") p) argsp in
+        let tmp_vars = ref [] in
+        (* Precomputation of the arguments *)
+        let args_comp = ref [] in
+        let args =
+          Array.map
+            (fun p ->
+              let t = prog_type ~env p in
+              let p = snd (emit_prog ~env p) in
+              match p with
+                | [e] -> String.sub e 0 (String.length e - 1)
+                | _ ->
+                  let tmp = tmp_var () in
+                  let p = prepend_last (tmp^" = ") p in
+                  tmp_vars := (tmp,t) :: !tmp_vars;
+                  args_comp := !args_comp @ p;
+                  tmp
+            ) args
+        in
         let p =
           match op with
-            | FAdd -> [Printf.sprintf "(%s + %s);" tmp.(0) tmp.(1)]
-            | FSub -> [Printf.sprintf "(%s - %s);" tmp.(0) tmp.(1)]
-            | FMul -> [Printf.sprintf "(%s * %s);" tmp.(0) tmp.(1)]
-            | FDiv -> [Printf.sprintf "(%s / %s);" tmp.(0) tmp.(1)]
+            | FAdd -> [Printf.sprintf "(%s + %s);" args.(0) args.(1)]
+            | FSub -> [Printf.sprintf "(%s - %s);" args.(0) args.(1)]
+            | FMul -> [Printf.sprintf "(%s * %s);" args.(0) args.(1)]
+            | FDiv -> [Printf.sprintf "(%s / %s);" args.(0) args.(1)]
             | Call f ->
-              let tmp = Array.to_list tmp in
-              let tmp = String.concat ", " tmp in
-              [Printf.sprintf "%s(%s);" f tmp]
+              let args = Array.to_list args in
+              let args = String.concat ", " args in
+              [Printf.sprintf "%s(%s);" f args]
         in
-        let tmp = Array.mapi (fun i x -> decl x (prog_type ~env args.(i))) tmp in
-        let tmp = Array.to_list tmp in
-        let argsp = Array.to_list argsp in
-        let argsp = List.flatten argsp in
-        env, tmp@argsp@p
+        let tmp_decl = List.map (fun (x,t) -> decl x t) !tmp_vars in
+        env, tmp_decl @ !args_comp @ p
 
   and emit_prog ~env prog =
     match prog with
