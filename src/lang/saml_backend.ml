@@ -12,6 +12,8 @@ module T = struct
     | Float
     | Ptr of t
     | Struct of (string * t) list
+    (** An external type identifier (e.g. defined in an include). *)
+    | Ident of string
 end
 
 (** An operation. *)
@@ -134,6 +136,7 @@ module Emitter_C = struct
       let t = Printf.sprintf "struct { %s }" t in
       type_decl t
     | T.Ptr t -> Printf.sprintf "%s*" (emit_type t)
+    | T.Ident t -> t
 
   let tmp_var =
     let n = ref 0 in
@@ -232,11 +235,21 @@ module Emitter_C = struct
       let args = List.map (fun (x,t) -> Printf.sprintf "%s %s" (emit_type t) x) args in
       let args = String.concat ", " args in
       let prog = snd (emit_prog ~env prog) in
-      let prog = prepend_last "return " prog in
+      let prog = if t = T.Void then prog@["return;"] else prepend_last "return " prog in
       let prog = String.concat "\n" prog in
-      Printf.sprintf "%s %s(%s) {\n%s\n}\n" (emit_type t) name args prog
+      Printf.sprintf "%s %s(%s) {\n%s\n}" (emit_type t) name args prog
 
-  let includes = ["stdlib.h"]
+  let default_includes = ["stdlib.h"; "math.h"]
+
+  (** Emit a list of includes. *)
+  let emit_includes includes =
+    let includes = List.map (fun f -> Printf.sprintf "#include <%s>" f) includes in
+    String.concat "\n" includes
+
+  (** Emit global type declarations. *)
+  let emit_type_decls () =
+    let td = List.map (fun (t,tn) -> Printf.sprintf "typedef %s %s;" t tn) !Env.type_decls in
+    String.concat "\n\n" td
 
   let emit_decls ?env d =
     Env.type_decls := [];
@@ -246,7 +259,7 @@ module Emitter_C = struct
         | None -> Env.create ()
     in
     let d = List.map (emit_decl ~env) d in
-    let td = List.map (fun (t,tn) -> Printf.sprintf "typedef %s %s;" t tn) !Env.type_decls in
-    let includes = List.map (fun f -> Printf.sprintf "#include <%s>" f) includes in
-    String.concat "\n\n" (includes@td@d)
+    let td = emit_type_decls () in
+    let includes = emit_includes default_includes in
+    String.concat "\n\n" (includes::td::d)
 end

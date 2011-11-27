@@ -18,7 +18,7 @@ type stateful =
 let builtin_prefix = "#saml_"
 let builtin_prefix_re = Str.regexp ("^"^builtin_prefix)
 
-let meta_vars = ["now"; "period"]
+let meta_vars = ["period"]
 
 let make_term t =
   { term = t; t = T.fresh_evar ~level:(-1) ~pos:None }
@@ -276,21 +276,27 @@ let emit name ~env ~venv tm =
     r@prog
   in
   let state_t = B.T.Struct refs_t in
-  let alloc =
-    let refs =
-      List.map
-        (fun (x,p) ->
-          let s = [B.Load [B.Ident "state"]] in
-          let r = [B.Field (s, x)] in
-          let r = [B.Address_of r] in
-          B.Store (r, p)
-        ) refs
-    in
-    [B.Let ("state", [B.Alloc state_t])]@refs@[B.Ident "state"]
+  let reset =
+    List.map
+      (fun (x,p) ->
+        let s = [B.Load [B.Ident "state"]] in
+        let r = [B.Field (s, x)] in
+        let r = [B.Address_of r] in
+        B.Store (r, p)
+      ) refs
   in
+  let reset = B.Decl ((name^"_reset", ["state", B.T.Ptr state_t], B.T.Void), reset) in
+  let alloc =
+    [
+      B.Let ("state", [B.Alloc state_t]);
+      B.Op (B.Call (name^"_reset"), [|[B.Ident "state"]|]);
+      B.Ident "state"
+    ]
+  in
+  let alloc = B.Decl ((name^"_alloc", [], B.T.Ptr state_t), alloc) in
   let free = [B.Free [B.Ident "state"]] in
+  let free = B.Decl ((name^"_free", ["state", B.T.Ptr state_t], B.T.Void), free) in
+  reset::alloc::free::
   [
-    B.Decl ((name^"_alloc", [], B.T.Ptr state_t), alloc);
-    B.Decl ((name^"_free", ["state", B.T.Ptr state_t], B.T.Void), free);
     B.Decl ((name, ["state", B.T.Ptr state_t; "now",B.T.Float; "period",B.T.Float], emit_type tm.t), prog)
   ]
