@@ -83,33 +83,33 @@ end
 module Fields = Map.Make(Field)
 (* x @@ y takes fields of y over fields of x
  * for the same key. *)
-let ( @@ ) = 
+let ( @@ ) =
   fun x y ->
     let cur,rem =
       Fields.fold (fun x ((_,o) as f) (cur,rem)->
         let f,rem =
           try
-            let ((_,o') as f') = 
+            let ((_,o') as f') =
                Fields.find x y
             in
             let rem = Fields.remove x rem in
-            if not o && o' then 
+            if not o && o' then
               f, rem
             else
               f', rem
-          with 
+          with
             | Not_found -> f, rem
-        in 
+        in
         Fields.add x f cur, rem) x (Fields.empty,y)
     in
     Fields.fold (fun x f cur -> Fields.add x f cur) rem cur
-let list_of_fields x = 
+let list_of_fields x =
   Fields.fold (fun x y l -> (x,y)::l) x []
 let fields_of_list l =
-  List.fold_left 
+  List.fold_left
     (fun cur (x,y) ->
       Fields.add x y cur)
-    Fields.empty l 
+    Fields.empty l
 
 type ('a, 'b) record =
   { fields : ('a*bool) Fields.t;
@@ -215,11 +215,11 @@ let rec merge_record r =
          begin
           let t = deref t in
           match t.descr with
-            | Record r -> 
+            | Record r ->
                 let r = merge_record r in
                 r.fields, f r
-            | EVar _ -> 
-                Fields.empty, Some t 
+            | EVar _ ->
+                Fields.empty, Some t
             | _ -> assert false
          end
      | _ -> assert false
@@ -252,11 +252,11 @@ let fresh_evar =
     f
 
 let record ~level ~row ~opt_row fields =
-  let fresh_row row = 
-    if row then 
-      Some (fresh_evar ~level ~constraints:[] ~pos:None) 
+  let fresh_row row =
+    if row then
+      Some (fresh_evar ~level ~constraints:[] ~pos:None)
     else
-      None 
+      None
   in
   make ~level (Record { fields  = fields;
                         row     = fresh_row row;
@@ -294,10 +294,10 @@ let copy_with subst t =
             (* TODO merging here doesn't follow the discipline in the
              *   Link case... *)
             let r = merge_record r in
-            let fields = 
+            let fields =
               (* The variables bound in [g] are only used in [t] by convention,
                * so we also assume that [subst] doesn't instantiate them. *)
-              Fields.map (fun ((g,t),o) -> (g, aux t),o) r.fields 
+              Fields.map (fun ((g,t),o) -> (g, aux t),o) r.fields
             in
               cp (Record { fields  = fields ;
                            row     = Utils.may aux r.row ;
@@ -383,7 +383,7 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
       match t.descr with
         | Ground g -> `Ground g
         | List t -> `List (repr t)
-        | Product (a,b) -> 
+        | Product (a,b) ->
             let a = repr a in
             let b = repr b in
             `Product (a, b)
@@ -399,19 +399,19 @@ let repr ?(filter_out=fun _->false) ?(generalized=[]) t : repr =
         | EVar (id,c) -> var_repr id c
         | Link t -> repr t
         | Record r ->
-          let r = merge_record r in
-          `Record {
-              fields = 
-                Fields.map
-                 (fun ((g,t),o) ->
-                   let generalized = g@generalized in
-                   let r = repr ~generalized t in
-                   (List.rev 
-                     (List.map 
-                       (fun (i,c) -> var_name i c) g),r),o)
-                 r.fields ;
-              row    = Utils.may repr r.row;
-              opt_row = Utils.may repr r.opt_row }
+            let r = merge_record r in
+            `Record {
+                fields =
+                  Fields.map
+                   (fun ((g,t),o) ->
+                     let generalized = g@generalized in
+                     let r = repr ~generalized t in
+                     (List.rev
+                       (List.map
+                         (fun (i,c) -> var_name i c) g),r),o)
+                   r.fields ;
+                row    = Utils.may repr r.row;
+                opt_row = Utils.may repr r.opt_row }
   in
     repr ~generalized t
 
@@ -475,59 +475,54 @@ let print_repr f t =
         let vars = print ~par:false vars t in
         Format.fprintf f "]@]" ;
         vars
-    | `Record { fields = r;
-                row    = row;
-                opt_row = opt_row } ->
-      Format.fprintf f "@[<1>[";
-      let vars =
-       if Fields.is_empty r then
-        begin
-         Format.fprintf f ":";
-         vars
-        end
-       else
-        begin
-         let _,vars =
-           Fields.fold
-            (fun lbl ((g,kind),o) (first,vars) ->
-              if not first then Format.fprintf f ", @," ;
-              let g = 
-                (* TODO debug isn't meant to hide parts of repr,
-                 *   which is already stripped to the max;
-                 *   also we should display only the relevant
-                 *   part of the schema, using the free-vars
-                 *   computation that is already being performed *)
-                if not debug || g = [] then 
-                  "" 
-                else 
-                  (* TODO get rid of unicode \forall *)
-                  ("∀" ^ String.concat " " g ^ " . ") 
-              in
-              let o = if o then "?" else "" in
-              Format.fprintf f "%s%s : %s" o lbl g;
-              let vars = print ~par:false vars kind in
-              false, vars)
-            r
-            (true,vars)
-         in
-         vars
-        end
-      in
-      let row_vars ~opt vars =
-        function
-          | Some row ->
-              Format.fprintf f ", @," ;
-              if opt then Format.fprintf f "?" ;
-              print ~par:false vars row
-          | None -> vars
-      in
-      let vars =
-        row_vars ~opt:true 
-          (row_vars ~opt:false vars row)
-          opt_row
-      in
-      Format.fprintf f "]@]";
-      vars
+    | `Record { fields = r ; row = row ; opt_row = opt_row } ->
+        Format.fprintf f "@[<1>[";
+        let vars =
+          if Fields.is_empty r then begin
+            Format.fprintf f ":";
+            vars
+          end else begin
+            let _,vars =
+              Fields.fold
+                (fun lbl ((g,kind),o) (first,vars) ->
+                   if not first then Format.fprintf f ", @," ;
+                   let g =
+                     (* TODO debug isn't meant to hide parts of repr,
+                      *   which is already stripped to the max;
+                      *   also we should display only the relevant
+                      *   part of the schema, using the free-vars
+                      *   computation that is already being performed *)
+                     if not debug || g = [] then
+                       ""
+                     else
+                       (* TODO get rid of unicode \forall *)
+                       ("∀" ^ String.concat " " g ^ " . ")
+                   in
+                   let o = if o then "?" else "" in
+                   Format.fprintf f "%s%s : %s" o lbl g;
+                   let vars = print ~par:false vars kind in
+                   false, vars)
+                 r
+                 (true,vars)
+            in
+              vars
+          end
+        in
+        let row_vars ~opt vars =
+          function
+            | Some row ->
+                Format.fprintf f ", @," ;
+                if opt then Format.fprintf f "?" ;
+                print ~par:false vars row
+            | None -> vars
+        in
+        let vars =
+          row_vars ~opt:true
+            (row_vars ~opt:false vars row)
+            opt_row
+        in
+          Format.fprintf f "]@]";
+          vars
     | `Variable ->
         Format.fprintf f "*" ;
         vars
@@ -663,9 +658,9 @@ let rec occur_check a b =
       | Ground _ -> ()
       | Link _ -> assert false
       | Record r ->
-        (* We should not have to check occurences in row variables. *)
-        let r = merge_record r in
-        Fields.iter (fun _ ((g,t),_) -> occur_check a t) r.fields
+          (* We should not have to check occurences in row variables. *)
+          let r = merge_record r in
+          Fields.iter (fun _ ((g,t),_) -> occur_check a t) r.fields
 
 (* Perform [a := b] where [a] is an EVar, check that [type(a)<:type(b)]. *)
 let rec bind a0 b =
@@ -906,7 +901,7 @@ let rec (<:) ~generalized a b =
                    * raise Not_found and let it see if it can
                    * override it. *)
                   if o1 && not o2 then raise Not_found;
-                  (cur,opt_cur) 
+                  (cur,opt_cur)
                 with
                   | Error (a,b) ->
                      (* Field x available in both records,
@@ -927,7 +922,7 @@ let rec (<:) ~generalized a b =
                        raise (Error (r1,r2))
                end
             with
-              | Not_found -> 
+              | Not_found ->
                   if o2 then
                     cur, Fields.add x field2 opt_cur
                   else
@@ -939,9 +934,9 @@ let rec (<:) ~generalized a b =
             match row with
               | None ->
                  (* No row type, sorry. *)
-                 let rec1 = 
-                   Fields.mapi 
-                     (fun x' ((g1,t1),o1) -> `Ellipsis,o1) 
+                 let rec1 =
+                   Fields.mapi
+                     (fun x' ((g1,t1),o1) -> `Ellipsis,o1)
                      r1.fields
                  in
                  let rec2 =
@@ -951,8 +946,8 @@ let rec (<:) ~generalized a b =
                    repr ~filter_out (deref b)
                  in
                  (* TODO: correctly display the generalized variables *)
-                 let rec1 = 
-                   Fields.map (fun (r,o) -> ([],r),o) rec1 
+                 let rec1 =
+                   Fields.map (fun (r,o) -> ([],r),o) rec1
                  in
                  raise (Error (`Record { fields = rec1;
                                          row    = Utils.may repr r1.row;
@@ -966,7 +961,7 @@ let rec (<:) ~generalized a b =
                   in
                   (* We have a row type, add a field to it. *)
                   assert (is_evar row1);
-                  let fresh = 
+                  let fresh =
                     record ~level:row1.level ~row:(not opt) ~opt_row:opt fields
                   in
                   (* TODO avoid manual Link update *)
@@ -977,15 +972,15 @@ let rec (<:) ~generalized a b =
           (* Then we unify the row variables. *)
           let r1 = merge_record r1 in
           let r2 = merge_record r2 in
-          let unify ~opt = 
+          let unify ~opt =
             function
               | None, Some row2 ->
-                  let rec1 = 
-                    Fields.filter 
-                      (fun x _ -> not (Fields.mem x r2.fields)) 
-                      r1.fields 
+                  let rec1 =
+                    Fields.filter
+                      (fun x _ -> not (Fields.mem x r2.fields))
+                      r1.fields
                   in
-                  row2.descr <- Link (make ~level:row2.level 
+                  row2.descr <- Link (make ~level:row2.level
                                         (Record { fields  = rec1;
                                                   row     = None ;
                                                   opt_row = None }))
@@ -1117,10 +1112,12 @@ let rec (<:) ~generalized a b =
           raise (Error (a,b))
 
 let (>:) a b =
-  try (<:) ~generalized:[] b a with Error (y,x) -> raise (Type_Error (true,b,a,y,x))
+  try (<:) ~generalized:[] b a with
+    | Error (y,x) -> raise (Type_Error (true,b,a,y,x))
 
 let (<:) a b =
-  try (<:) ~generalized:[] a b with Error (x,y) -> raise (Type_Error (false,a,b,x,y))
+  try (<:) ~generalized:[] a b with
+    | Error (x,y) -> raise (Type_Error (false,a,b,x,y))
 
 let filter_vars f t =
   let rec aux ?(generalized=[]) l t =
@@ -1135,18 +1132,21 @@ let filter_vars f t =
     | Arrow (p,t) ->
         aux (List.fold_left (fun l (_,_,t) -> aux l t) l p) t
     | EVar ic ->
-        if not (List.mem ic generalized) && not (List.mem ic l) && f t then ic::l else l
+        if not (List.mem ic generalized) && not (List.mem ic l) && f t then
+          ic::l
+        else
+          l
     | Link _ -> assert false
     | Record r ->
-      let f l =
-        function
-          | Some row -> aux l row
-          | None -> l
-      in
-      (* TODO filter the type of the default value *)
-      Fields.fold 
-        (fun x ((g,t),_) l -> aux ~generalized:(g@generalized) l t)
-        r.fields (f (f l r.opt_row) r.row)
+        let f l =
+          function
+            | Some row -> aux l row
+            | None -> l
+        in
+          (* TODO filter the type of the default value *)
+          Fields.fold
+            (fun x ((g,t),_) l -> aux ~generalized:(g@generalized) l t)
+            r.fields (f (f l r.opt_row) r.row)
   in
   aux [] t
 
