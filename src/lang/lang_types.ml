@@ -204,11 +204,6 @@ let make ?(pos=None) ?(level=(-1)) d =
 
 let dummy = make ~pos:None (EVar (-1,[]))
 
-let is_evar t =
-  match (* TODO deref? *) t.descr with
-    | EVar _ -> true
-    | _ -> false
-
 (** Merge a record with other records its row variables are pointing to. *)
 let rec merge_record r =
   let get f =
@@ -296,14 +291,17 @@ let copy_with subst t =
              * the type unchanged. *)
             cp (Link (aux t))
         | Record r ->
-          let r = merge_record r in
-          (* TODO: hide variables from g in the substitution! *)
-          let fields = 
-            Fields.map (fun ((g,t),o) -> (g, aux t),o) r.fields 
-          in
-          cp (Record {fields = fields;
-                      row    = Utils.may aux r.row;
-                      opt_row = Utils.may aux r.opt_row})
+            (* TODO merging here doesn't follow the discipline in the
+             *   Link case... *)
+            let r = merge_record r in
+            let fields = 
+              (* The variables bound in [g] are only used in [t] by convention,
+               * so we also assume that [subst] doesn't instantiate them. *)
+              Fields.map (fun ((g,t),o) -> (g, aux t),o) r.fields 
+            in
+              cp (Record { fields  = fields ;
+                           row     = Utils.may aux r.row ;
+                           opt_row = Utils.may aux r.opt_row })
   in
     aux t
 
@@ -494,14 +492,20 @@ let print_repr f t =
             (fun lbl ((g,kind),o) (first,vars) ->
               if not first then Format.fprintf f ", @," ;
               let g = 
+                (* TODO debug isn't meant to hide parts of repr,
+                 *   which is already stripped to the max;
+                 *   also we should display only the relevant
+                 *   part of the schema, using the free-vars
+                 *   computation that is already being performed *)
                 if not debug || g = [] then 
                   "" 
                 else 
+                  (* TODO get rid of unicode \forall *)
                   ("∀" ^ String.concat " " g ^ " . ") 
               in
               let o = if o then "?" else "" in
-              Format.fprintf f "%s%s: %s" o lbl g;
-              let vars = print ~par:true vars kind in
+              Format.fprintf f "%s%s : %s" o lbl g;
+              let vars = print ~par:false vars kind in
               false, vars)
             r
             (true,vars)
@@ -512,13 +516,9 @@ let print_repr f t =
       let row_vars ~opt vars =
         function
           | Some row ->
-              if debug then
-               begin
-                Format.fprintf f ", @,";
-                if opt then Format.fprintf f "?";
-                print ~par vars row
-               end
-              else vars
+              Format.fprintf f ", @," ;
+              if opt then Format.fprintf f "?" ;
+              print ~par:false vars row
           | None -> vars
       in
       let vars =
@@ -892,29 +892,6 @@ let rec (<:) ~generalized a b =
     | Record r1, Record r2 ->
         let r1 = merge_record r1 in
         let r2 = merge_record r2 in
-        let error x a b =
-          (* TODO: correctly display the generalized variables *)
-          let rec1 = Fields.mapi
-                       (fun x' ((g,_),o) ->
-                        if x' = x then
-                          ([],a),o
-                        else
-                          ([],`Ellipsis),o) r1.fields
-          in
-          let rec2 = Fields.mapi
-                      (fun x' ((g,_),o) ->
-                        if x' = x then
-                          ([],b),o
-                        else
-                          ([],`Ellipsis),o) r2.fields
-          in
-          raise (Error (`Record { fields = rec1;
-                                  row    = Utils.may repr r1.row;
-                                  opt_row = Utils.may repr r1.opt_row },
-                        `Record { fields  = rec2;
-                                  row     = Utils.may repr r2.row;
-                                  opt_row  = Utils.may repr r2.opt_row }))
-        in
         let fields, opt_fields =
           Fields.fold
             (fun x (((g2,t2),o2) as field2) (cur,opt_cur) ->
@@ -931,7 +908,23 @@ let rec (<:) ~generalized a b =
                   if o1 && not o2 then raise Not_found;
                   (cur,opt_cur) 
                 with
-                  | Error (a,b) -> error x a b
+                  | Error (a,b) ->
+                     (* Field x available in both records,
+                      * but the corresponding types don't fit.
+                      * There are no toplevel universal variables,
+                      * since we're looking at instantiated types. *)
+                     let skeleton base t =
+                       let o = snd (Fields.find x base) in
+                       let fields =
+                         Fields.add x (([],t),o) Fields.empty
+                       in
+                         `Record { fields = fields ;
+                                   row = Some `Range_Ellipsis ;
+                                   opt_row = None }
+                     in
+                     let r1 = skeleton r1.fields a in
+                     let r2 = skeleton r2.fields b in
+                       raise (Error (r1,r2))
                end
             with
               | Not_found -> 
@@ -966,6 +959,11 @@ let rec (<:) ~generalized a b =
                                          opt_row = Utils.may repr r1.opt_row },
                                rec2))
               | Some row1 ->
+                  let is_evar t =
+                    match (* TODO deref? *) t.descr with
+                      | EVar _ -> true
+                      | _ -> false
+                  in
                   (* We have a row type, add a field to it. *)
                   assert (is_evar row1);
                   let fresh = 
