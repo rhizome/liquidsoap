@@ -204,7 +204,8 @@ let make ?(pos=None) ?(level=(-1)) d =
 
 let dummy = make ~pos:None (EVar (-1,[]))
 
-(** Merge a record with other records its row variables are pointing to. *)
+(** Merge a record type with inner record types pointed by row variables.
+  * The row variables in the returned type are always fully dereferenced. *)
 let rec merge_record r =
   let get f =
    match f r with
@@ -479,6 +480,7 @@ let print_repr f t =
         Format.fprintf f "@[<1>[";
         let vars =
           if Fields.is_empty r then begin
+            (* TODO [:] ugly, [:, ...] and [:, 'b, ?'a] worse *)
             Format.fprintf f ":";
             vars
           end else begin
@@ -885,8 +887,17 @@ let rec (<:) ~generalized a b =
                                          `Product (`Ellipsis,b)))
         end
     | Record r1, Record r2 ->
+        (* TODO merging is useless after deref *)
         let r1 = merge_record r1 in
         let r2 = merge_record r2 in
+        (* r1 <: r2 requires that each field x in r2 is present in r1,
+         * with r1.f <: r2.f, and the field may be optional in r1 only
+         * if it is optional in r2.
+         * So we start by extracting all fields from r1
+         * that corresponding to the ones in r2, and check
+         * the corresponding subtyping constraint.
+         * Some fields may be added to fields and opt_fields;
+         * we will need to add them to r1 afterwards. *)
         let fields, opt_fields =
           Fields.fold
             (fun x (((g2,t2),o2) as field2) (cur,opt_cur) ->
@@ -894,14 +905,17 @@ let rec (<:) ~generalized a b =
                let (g1,t1),o1 = Fields.find x r1.fields in
                begin
                 try
+                  (* First check that the type fits, then check optionality,
+                   * and add the field with a changed optionality if needed. *)
                   (* TODO which level? does it matter? *)
                   let t1 = instantiate ~generalized:g1 ~level:0 t1 in
                   (<:) ~generalized:(g2@generalized) t1 t2 ;
                   (* If field is already defined as optional,
-                   * raise Not_found and let it see if it can
-                   * override it. *)
-                  if o1 && not o2 then raise Not_found;
-                  (cur,opt_cur)
+                   * we'll require the addition of a new field to override. *)
+                  if o1 && not o2 then
+                    Fields.add x field2 cur, opt_cur
+                  else
+                    (cur,opt_cur)
                 with
                   | Error (a,b) ->
                      (* Field x available in both records,
@@ -921,19 +935,27 @@ let rec (<:) ~generalized a b =
                      let r2 = skeleton r2.fields b in
                        raise (Error (r1,r2))
                end
-            with
-              | Not_found ->
-                  if o2 then
-                    cur, Fields.add x field2 opt_cur
-                  else
-                    Fields.add x field2 cur, opt_cur)
+              with
+                | Not_found ->
+                    if o2 then
+                      cur, Fields.add x field2 opt_cur
+                    else
+                      Fields.add x field2 cur, opt_cur)
             r2.fields (Fields.empty,Fields.empty)
         in
+        (* Add missing fields in r1, for a given optionality and
+         * the corresponding row variable. *)
         let add_fields ~opt row fields =
           if not (Fields.is_empty fields) then
             match row with
               | None ->
-                 (* No row type, sorry. *)
+                 (* No row type, we can't add missing fields to r1.
+                  * TODO Why can't we add opt fields to the normal row var?
+                  *   Unifying row and opt_row would be clearer, also for
+                  *   type display and error reports.
+                  * TODO Error reports can also be simplified: we don't
+                  *   need to see row variables, only the fact that they exist
+                  *   or not. *)
                  let rec1 =
                    Fields.mapi
                      (fun x' ((g1,t1),o1) -> `Ellipsis,o1)
@@ -954,27 +976,27 @@ let rec (<:) ~generalized a b =
                                          opt_row = Utils.may repr r1.opt_row },
                                rec2))
               | Some row1 ->
-                  let is_evar t =
-                    match (* TODO deref? *) t.descr with
-                      | EVar _ -> true
-                      | _ -> false
-                  in
-                  (* We have a row type, add a field to it. *)
-                  assert (is_evar row1);
+                  (* We have a row variable, which is necessarily an EVar.
+                   * Instantiate it to add missing fields. *)
+                  assert (match row1.descr with EVar _ -> true | _ -> false) ;
                   let fresh =
+                    (* TODO review row:(not opt) ~opt_row:opt *)
                     record ~level:row1.level ~row:(not opt) ~opt_row:opt fields
                   in
-                  (* TODO avoid manual Link update *)
+                  (* TODO avoid manual Link update, check level (eg. of fresh) *)
                   row1.descr <- Link fresh
-          in
+        in
           add_fields ~opt:false r1.row     fields ;
           add_fields ~opt:true  r1.opt_row opt_fields ;
-          (* Then we unify the row variables. *)
+          (* Finally, unify the (new) row variables.
+           * This is another place where we're forcing something
+           * stronger than what subtyping requires. *)
           let r1 = merge_record r1 in
           let r2 = merge_record r2 in
           let unify ~opt =
             function
               | None, Some row2 ->
+                  (* TODO check and avoid manual Link *)
                   let rec1 =
                     Fields.filter
                       (fun x _ -> not (Fields.mem x r2.fields))
