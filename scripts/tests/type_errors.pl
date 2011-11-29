@@ -103,8 +103,16 @@ correct('def f(x) = ignore(?(x.foo="aabb")^x.foo) x end');
 incorrect('def f(x) = ignore(?(x.foo="aabb")^x.foo) x end f([])');
 correct('x = [foo=1] ignore(?(x.gni.bla=1)) ignore(?(x.gni="aabb"))');
 correct('x = [foo=1] ignore(?x.foo) ignore(?x.gni)');
-correct('x = [foo=1] def f(z=x) = ignore(?(z.bar="aabb")) end f([foo=1, bar="aabb"]) ?(x.bar=1)');
+correct('
+  x = [foo=1] def f(z=x) = ignore(?(z.bar="aabb")) end
+  f([foo=1, bar="aabb"]) ignore(?(x.bar=1))');
 incorrect('def f(x) = y = [ x with foo=1 ] ignore(x.foo) y end x = f([foo="aabb"]) x.foo^""');
 correct('r = [f = fun(x)->x] f = fun(x)->x.f(2)+0 ignore(f(r)) ignore(r.f(""))');
+incorrect('
+  def same =
+    same = ref (fun (x,y) -> ()) ; f = !same ; same := fun(x,y)->f(y,x) ; !same
+  end
+  def f(r) same(r,[r with foo=1]) end
+  f([=])');
 
 print "Everything's good!\n" ;
