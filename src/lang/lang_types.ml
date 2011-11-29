@@ -950,6 +950,8 @@ let rec (<:) ~generalized a b =
             match row with
               | None ->
                  (* No row type, we can't add missing fields to r1.
+                  * Generate an error report showing that r2 has one
+                  * field which r1 cannot have.
                   * TODO Why can't we add opt fields to the normal row var?
                   *   Unifying row and opt_row would be clearer, also for
                   *   type display and error reports.
@@ -957,24 +959,18 @@ let rec (<:) ~generalized a b =
                   *   need to see row variables, only the fact that they exist
                   *   or not. *)
                  let rec1 =
-                   Fields.mapi
-                     (fun x' ((g1,t1),o1) -> `Ellipsis,o1)
-                     r1.fields
+                   `Record { fields = Fields.mapi
+                                        (fun x' ((_,_),o) -> ([],`Ellipsis),o)
+                                        r1.fields ;
+                             row    = Utils.may repr r1.row ;
+                             opt_row = Utils.may repr r1.opt_row }
                  in
                  let rec2 =
-                   (* Handles both records and non-records *)
-                   let fo = ref false in
-                   let filter_out _ = !fo || (fo := true; false) in
-                   repr ~filter_out (deref b)
+                   let k,(_,o) = Fields.choose fields in
+                     `Record { fields = Fields.singleton k (([],`Ellipsis),o) ;
+                               row = Some `Range_Ellipsis ; opt_row = None }
                  in
-                 (* TODO: correctly display the generalized variables *)
-                 let rec1 =
-                   Fields.map (fun (r,o) -> ([],r),o) rec1
-                 in
-                 raise (Error (`Record { fields = rec1;
-                                         row    = Utils.may repr r1.row;
-                                         opt_row = Utils.may repr r1.opt_row },
-                               rec2))
+                   raise (Error (rec1, rec2))
               | Some row1 ->
                   (* We have a row variable, which is necessarily an EVar.
                    * Instantiate it to add missing fields. *)
