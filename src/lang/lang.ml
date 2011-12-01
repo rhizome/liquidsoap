@@ -48,10 +48,7 @@ let of_list_t t = match (T.deref t).T.descr with
   | T.List t -> t
   | _ -> assert false
 
-let record_t ?row ?opt_row f =
-  T.make (T.Record {T.fields  = f;
-                      row     = row;
-                      opt_row = opt_row})
+let record_t ?(row=false) fields = Term.record_t ~level:(-1) ~row fields
 let of_record_t t = match (T.deref t).T.descr with
   | T.Record r -> r
   | _ -> assert false
@@ -232,12 +229,12 @@ let product a b = mk (product_t a.t b.t) (Product (a,b))
 
 let list ~t l = mk (list_t t) (List l)
 
-let record ?row ?opt_row f =
+let record ?row f =
   (* TODO should we generalize anything?
    *   this would require a value_restriction for values, not terms *)
   let lt = T.Fields.map (fun x -> ([],x.t),false) f in
   let f = T.Fields.map (fun x -> { v_gen = [] ; v_value = x }) f in
-  mk (record_t ?row ?opt_row lt) (Record f)
+  mk (record_t ?row lt) (Record f)
 
 let source s =
   mk (source_t (kind_type_of_frame_kind s#kind)) (Source s)

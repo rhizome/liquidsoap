@@ -80,7 +80,15 @@ struct
   type t = string
   let compare = compare
 end
-module Fields = Map.Make(Field)
+module Fields = struct
+  include Map.Make(Field)
+
+  let of_list l =
+    List.fold_left (fun ff (x,f) -> add x f ff) empty l
+
+  let to_list ff =
+    fold (fun x f l -> (x,f)::l) ff []
+end
 (* x @@ y takes fields of y over fields of x
  * for the same key. *)
 let ( @@ ) = 

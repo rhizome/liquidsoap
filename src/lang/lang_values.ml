@@ -206,7 +206,7 @@ let rec print_term v = match v.term with
   | Get r -> Printf.sprintf "!%s" (print_term r)
   | Set (r, v) -> Printf.sprintf "%s := %s" (print_term r) (print_term v)
   | Open (r, v) -> Printf.sprintf "open(%s); %s" (print_term r) (print_term v)
-  | Let l -> Printf.sprintf "%s = %s; %s" l.var (print_term l.def) (print_term l.body)
+  | Let l -> Printf.sprintf "%s = (%s) %s" l.var (print_term l.def) (print_term l.body)
   | Is_field _ -> assert false
 
 let rec free_vars tm = match tm.term with

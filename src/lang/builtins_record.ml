@@ -24,12 +24,11 @@
 
 open Lang_builtins
 
-let () = 
-  let row = Lang.univ_t 1 in
+let () =
   let e = Lang_types.Fields.empty in
   add_builtin "record.labels" ~cat:Liq
     ~descr:"Get the list of defined labels of a record."
-   ["",Lang.record_t ~row e,None,None] (Lang.list_t Lang.string_t)
+   ["",Lang.record_t ~row:true e,None,None] (Lang.list_t Lang.string_t)
    (fun p ->
      let l = Lang.to_record (List.assoc "" p) in
      let l = Lang_types.list_of_fields l in

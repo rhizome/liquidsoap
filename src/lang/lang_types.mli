@@ -33,7 +33,11 @@ type constr = Num | Ord | Getter of ground | Dtools | Arity_fixed | Arity_any
 type constraints = constr list
 val print_constr : constr -> string
 
-module Fields : Map.S with type key = string
+module Fields : sig
+  include Map.S with type key = string
+  val of_list : (key * 'a) list -> 'a t
+  val to_list : 'a t -> (key * 'a) list
+end
 type ('a,'b) record = {
   fields : ('a*bool) Fields.t;
   row    : 'b option;
