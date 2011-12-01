@@ -491,9 +491,10 @@ record:
   | LBRA inner_record RBRA { $2 }
 inner_record:
   | VAR GETS expr COMMA inner_record { Lang_types.Fields.add $1 (field $3) $5 }
-  | VAR GETS expr                    { Lang_types.Fields.add
-                                         $1 (field $3)
-                                         Lang_types.Fields.empty }
+  | VAR GETS expr comma_opt          { Lang_types.Fields.add $1 (field $3) Lang_types.Fields.empty }
+comma_opt:
+  | COMMA {}
+  | {}
 
 
 app_list_elem:
