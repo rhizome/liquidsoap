@@ -45,7 +45,7 @@ let register_builtins () =
       let oc = open_out fname in
       output_string oc v;
       close_out oc;
-      assert false
+      Lang.unit
     );
   let voice_t =
     let r = ["main", Lang.float_t] in
@@ -80,7 +80,7 @@ let register_builtins () =
       let oc = open_out fname in
       output_string oc v;
       close_out oc;
-      assert false
+      Lang.unit
     );
   Saml_builtins.register ()
 
