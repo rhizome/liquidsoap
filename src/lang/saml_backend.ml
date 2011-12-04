@@ -339,6 +339,7 @@ module Emitter_C = struct
     String.concat "\n\n" (includes::td::d)
 
   let emit_dssi ?env d =
+    (*
     let dssi_descriptor_t =
       T.Struct
         [
@@ -363,4 +364,11 @@ module Emitter_C = struct
     let d = (Decl_cst ("descriptor", Null (T.Ptr dssi_descriptor_t)))::d@init in
     let d = List.map (emit_decl ~env) d in
     String.concat "\n\n" d
+    *)
+    Env.type_decls := [];
+    let env = Env.create () in
+    let d = List.map (emit_decl ~env) d in
+    let td = emit_type_decls () in
+    let includes = emit_includes default_includes in
+    String.concat "\n\n" (includes::td::d)
 end

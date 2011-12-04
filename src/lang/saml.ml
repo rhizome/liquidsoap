@@ -71,7 +71,8 @@ let register_builtins () =
           | _ -> assert false
       in
       let v = SV.make_field ~t:Lang.float_t r "main" in
-      let v = SV.make_let (name^"_set_freq") (SV.make_field ~t:(T.make (T.Arrow([false,"",Lang.float_t], Lang.float_t))) r "set_freq") v in
+      let v = SV.make_let (name^"_set_freq") (SV.make_field ~t:(T.make (T.Arrow([false,"",Lang.float_t], Lang.unit_t))) r "set_freq") v in
+      (* let v = SV.make_let (name^"_set_velocity") (SV.make_field ~t:(T.make (T.Arrow([false,"",Lang.float_t], Lang.unit_t))) r "set_velocity") v in *)
       let v = SV.emit name ~venv ~env v in
       let v = SB.Emitter_C.emit_dssi v in
       Printf.printf "EMIT: %s\n\n%!" fname;

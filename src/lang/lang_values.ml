@@ -183,15 +183,28 @@ let rec print_term v = match v.term with
   | List l ->
       "["^(String.concat ", " (List.map print_term l))^"]"
   | Record r ->
-    "["^String.concat ", " 
-        (T.Fields.fold 
+    "["^String.concat ", "
+        (T.Fields.fold
           (fun _ t l -> print_term t.rval :: l) r [])^"]"
   | Product (a,b) ->
       Printf.sprintf "(%s,%s)" (print_term a) (print_term b)
   | Ref a ->
       Printf.sprintf "ref(%s)" (print_term a)
   | Fun (_,[],v) when is_ground v -> "{"^(print_term v)^"}"
-  | Fun _ -> "<fun>"
+  (* | Fun _ -> "<fun>" *)
+  | Fun (_,args,body) ->
+    let args =
+      List.map
+        (fun (l,x,t,o) ->
+          if l = "" then x
+          else
+            match o with
+              | None -> Printf.sprintf "~%s:%s" l x
+              | Some o -> Printf.sprintf "?%s:(%s=%s)" l x (print_term o)
+        ) args
+    in
+    let args = String.concat ", " args in
+    Printf.sprintf "fun (%s) -> %s" args (print_term body)
   | Var s -> s
   | App (hd,tl) ->
       let tl =

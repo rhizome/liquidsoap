@@ -88,6 +88,7 @@ let rec term_of_value v =
 
 (** Reduce a term. [venv] is an environment of values. When [toplevel] is
     [true], the let should not be reduced. *)
+(* Properly handle alpha-conversion. *)
 and reduce ?(toplevel=false) ?(venv=[]) ?(env=[]) tm =
   (* Printf.printf "reduce: %s\n%!" (V.print_term tm); *)
   let reduce ?(venv=venv) ?(env=env) = reduce ~venv ~env in
@@ -127,10 +128,10 @@ and reduce ?(toplevel=false) ?(venv=[]) ?(env=[]) tm =
           match r.term with
             | Record r -> (T.Fields.find x r).rval.term
             | Seq (a, b) ->
-              let b = make_term (Field (b,x,d)) in
+              let b = make_term ~t:tm.t (Field (b,x,d)) in
               Seq (a, reduce b)
             | Let l ->
-              let body = make_term (Field (l.body,x,d)) in
+              let body = make_term ~t:tm.t (Field (l.body,x,d)) in
               let body = reduce body in
               Let { l with body = body }
             | _ ->
@@ -156,7 +157,8 @@ and reduce ?(toplevel=false) ?(venv=[]) ?(env=[]) tm =
       | Fun (vars,p,v) ->
         let env =
           let env = ref env in
-          List.iter (fun (l,_,_,_) -> env := List.remove_assoc l !env) p;
+          (* TODO: remove all assocs *)
+          List.iter (fun (_,x,_,_) -> env := List.remove_assoc x !env) p;
           !env
         in
         Fun (vars,p,reduce ~env v)
@@ -166,6 +168,12 @@ and reduce ?(toplevel=false) ?(venv=[]) ?(env=[]) tm =
         (
           match a.term with
             | Fun (vars, args, body) ->
+              let env =
+                let env = ref env in
+                (* TODO: remove all assocs *)
+                List.iter (fun (_,x,_,_) -> env := List.remove_assoc x !env) args;
+                !env
+              in
               let args = List.map (fun (l,x,t,v) -> l,(x,t,v)) args in
               let args = ref args in
               let find_arg l =
@@ -187,7 +195,9 @@ and reduce ?(toplevel=false) ?(venv=[]) ?(env=[]) tm =
               App (a,l)
         )
   in
-  { tm with term = term }
+  let ans = { tm with term = term } in
+  (* Printf.printf "reduce: %s => %s\n%!" (V.print_term tm) (V.print_term ans); *)
+  ans
 
 let subst x v tm = reduce ~env:[x,v] tm
 
@@ -328,12 +338,13 @@ let rec emit_decl_prog tm =
               List.map (fun t -> incr n; Printf.sprintf "x%d" !n, t) args
             in
             let proto = l.var, args, t in
-            let d = B.Decl (proto, emit_prog l.def) in
-            let body =
+            let def =
               let args = List.map (fun (x, _) -> "", make_term (Var x)) args in
-              make_term (App (l.body, args))
+              let def = make_term (App (l.def, args)) in
+              reduce def
             in
-            let dd, p = emit_decl_prog body in
+            let d = B.Decl (proto, emit_prog def) in
+            let dd, p = emit_decl_prog l.body in
             d::dd, p
           | _ ->
             let dd, p = emit_decl_prog l.body in
