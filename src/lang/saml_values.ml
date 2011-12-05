@@ -1,5 +1,6 @@
 (** "Values", as manipulated by SAML. *)
 
+open Utils.Stdlib
 open Lang_values
 
 module B = Saml_backend
@@ -8,6 +9,7 @@ module T = Lang_types
 
 type t = V.term
 
+(** A stateful program. *)
 type stateful =
     {
       prog : term;
@@ -51,6 +53,104 @@ let make_field ?t ?opt r x =
   in
   make_term ?t (Field (r, x, opt))
 
+(** Generate a fresh reference name. *)
+let fresh_ref =
+  let n = ref 0 in
+  fun () ->
+    incr n;
+    Printf.sprintf "saml_ref%d" !n
+
+let fresh_var =
+  let n = ref 0 in
+  fun () ->
+    incr n;
+    Printf.sprintf "saml_x%d" !n
+
+let rec free_vars tm =
+  (* Printf.printf "free_vars: %s\n%!" (print_term tm); *)
+  let fv = free_vars in
+  let u v1 v2 = v1@v2 in
+  let r xx v = List.filter (fun y -> not (List.mem y xx)) v in
+  match tm.term with
+    | Var x -> [x]
+    | Unit | Bool _ | Int _ | String _ | Float _ -> []
+    | Seq (a,b) -> u (fv a) (fv b)
+    | Ref r | Get r -> fv r
+    | Set (r,v) -> u (fv r) (fv v)
+    | Record r -> T.Fields.fold (fun _ v f -> u (fv v.rval) f) r []
+    | Let l -> u (fv l.def) (r [l.var] (fv l.body))
+    | Fun (_, p, v) ->
+      let p = List.map (fun (_,x,_,_) -> x) p in
+      r p (fv v)
+    | App (f,a) ->
+      let a = List.fold_left (fun f (_,v) -> u f (fv v)) [] a in
+      u (fv f) a
+
+let occurences x tm =
+  let ans = ref 0 in
+  List.iter (fun y -> if y = x then incr ans) (free_vars tm);
+  !ans
+
+(** Apply a list of substitutions to a term. *)
+let rec substs ss tm =
+  (* Printf.printf "substs: %s\n%!" (print_term t); *)
+  let s ?(ss=ss) = substs ss in
+  let term =
+    match tm.term with
+      | Var x ->
+        let rec aux = function
+          | (x',v)::ss when x' = x -> (substs ss v).term
+          | _::ss -> aux ss
+          | [] -> tm.term
+        in
+        aux ss
+      | Unit | Bool _ | Int _ | String _ | Float _ -> tm.term
+      | Seq (a,b) -> Seq (s a, s b)
+      | Ref r -> Ref (s r)
+      | Get r -> Get (s r)
+      | Set (r,v) -> Set (s r, s v)
+      | Record r ->
+        let r = T.Fields.map (fun v -> { v with rval = s v.rval }) r in
+        Record r
+      | Field (r,x,d) -> Field (s r, x, Utils.may s d)
+      | Replace_field (r,x,v) ->
+        let v = { v with rval = s v.rval } in
+        Replace_field (s r, x, v)
+      | Let l ->
+        let def = s l.def in
+        let ss = List.remove_all_assoc l.var ss in
+        let s = s ~ss in
+        let var = fresh_var () in
+        let body = subst l.var (make_term (Var var)) l.body in
+        let body = s body in
+        let l = { l with var = var; def = def; body = body } in
+        Let l
+      | Fun (vars,p,v) ->
+        let ss = ref ss in
+        let sp = ref [] in
+        let p =
+          List.map
+            (fun (l,x,t,v) ->
+              let x' = fresh_var () in
+              ss := List.remove_all_assoc l !ss;
+              sp := (x, make_term (Var x')) :: !sp;
+              l,x',t,Utils.may s v
+            ) p
+        in
+        let v = substs !sp v in
+        let ss = !ss in
+        let v = s ~ss v in
+        (* TODO: alpha-convert vars too? *)
+        Fun (vars,p,v)
+      | App (a,l) ->
+        let a = s a in
+        let l = List.map (fun (l,v) -> l, s v) l in
+        App (a,l)
+  in
+  make_term ~t:tm.t term
+
+and subst x v tm = substs [x,v] tm
+
 (* Convert values to terms. This is a hack necessary becausse FFI are values and
    not terms (we should change this someday...). *)
 let rec term_of_value v =
@@ -78,189 +178,143 @@ let rec term_of_value v =
         )
       | V.V.Fun (params, applied, venv, t) ->
         let params = List.map (fun (l,x,v) -> l,x,T.fresh_evar ~level:(-1) ~pos:None,Utils.may term_of_value v) params in
-        let applied = List.map (fun (x,(_,v)) -> x,v) applied in
-        let venv = List.map (fun (x,(_,v)) -> x,v) venv in
+        let applied = List.may_map (fun (x,(_,v)) -> try Some (x,term_of_value v) with _ -> None) applied in
+        let venv = List.may_map (fun (x,(_,v)) -> try Some (x,term_of_value v) with _ -> None) venv in
         let venv = applied@venv in
-        let t = reduce ~venv t in
+        let t = substs venv t in
+        (* TODO: fill vars? *)
         Fun (V.Vars.empty, params, t)
   in
   make_term term
 
-(** Reduce a term. [venv] is an environment of values. When [toplevel] is
-    [true], the let should not be reduced. *)
-(* Properly handle alpha-conversion. *)
-and reduce ?(toplevel=false) ?(venv=[]) ?(env=[]) tm =
+(* TODO: shall we beta-convert when we reduce under lets? *)
+let rec reduce tm =
   (* Printf.printf "reduce: %s\n%!" (V.print_term tm); *)
-  let reduce ?(venv=venv) ?(env=env) = reduce ~venv ~env in
-  let term =
-    match tm.term with
-      | Var "period" -> tm.term
-      | Var x ->
-        (
-          try
-            (List.assoc x env).term
-          with
-            | Not_found ->
-              try
-                (term_of_value (List.assoc x venv)).term
-              with
-                | Not_found -> tm.term
-        )
-      | Unit | Bool _ | Int _ | String _ | Float _ | Encoder _ -> tm.term
-      | Seq (a,b) ->
-        let a = reduce a in
-        let b = reduce b in
-        (
-          match a.term with
-            | Unit -> b.term
-            | _ -> Seq (a, b)
-        )
-      | Ref r -> Ref (reduce r)
-      | Get r -> Get (reduce r)
-      | Set (r,v) -> Set (reduce r, reduce v)
-      | Record r ->
-        let r = T.Fields.map (fun v -> { v with rval = reduce v.rval }) r in
-        Record r
-      | Field (r,x,d) ->
-        (* TODO: alpha-conversion on d *)
-        let r = reduce r in
-        (
-          match r.term with
-            | Record r -> (T.Fields.find x r).rval.term
-            | Seq (a, b) ->
-              let b = make_term ~t:tm.t (Field (b,x,d)) in
-              Seq (a, reduce b)
-            | Let l ->
-              let body = make_term ~t:tm.t (Field (l.body,x,d)) in
-              let body = reduce body in
-              Let { l with body = body }
-            | _ ->
-              Printf.printf "instead of record: %s\n%!" (V.print_term r);
-              assert false
-        )
-      | Replace_field _ -> failwith "reduce: Replace_field"
-      | Open _ -> failwith "reduce: Open"
-      | Let l ->
-        (* TODO: don't reduce when used multiple times *)
-        let reducible = not toplevel &&
-          match (T.deref l.def.t).T.descr with
-            | T.Constr { T.name = "ref" } -> false
-            | _ -> true
-        in
-        if reducible then
-          (* TODO: alpha-conversion!!! *)
-          let env = (l.var,l.def)::env in
-          (reduce ~env l.body).term
-        else
-          let l = { l with def = reduce ~env l.def; body = reduce ~toplevel ~env l.body } in
-          Let l
-      | Fun (vars,p,v) ->
-        let env =
-          let env = ref env in
-          (* TODO: remove all assocs *)
-          List.iter (fun (_,x,_,_) -> env := List.remove_assoc x !env) p;
-          !env
-        in
-        Fun (vars,p,reduce ~env v)
-      | App (a,l) ->
-        let a = reduce a in
-        let l = List.map (fun (l,v) -> l, reduce v) l in
-        (
-          match a.term with
-            | Fun (vars, args, body) ->
-              let env =
-                let env = ref env in
-                (* TODO: remove all assocs *)
-                List.iter (fun (_,x,_,_) -> env := List.remove_assoc x !env) args;
-                !env
-              in
-              let args = List.map (fun (l,x,t,v) -> l,(x,t,v)) args in
-              let args = ref args in
-              let find_arg l =
-                let (x,_,_) = List.assoc l !args in
-                args := List.remove_assoc l !args;
-                x
-              in
-              let l = List.map (fun (l,v) -> find_arg l, v) l in
-              (* TODO: alpha-conversion!!! *)
-              let env = l@env in
-              let body = reduce ~env body in
-              (* TODO: reduce optional args if no non-optional is present *)
-              if !args = [] then
-                body.term
-              else
-                let args = List.map (fun (l,(x,t,v)) -> l,x,t,v) !args in
-                Fun (vars, args, body)
-            | _ ->
-              App (a,l)
-        )
-  in
-  let ans = { tm with term = term } in
-  (* Printf.printf "reduce: %s => %s\n%!" (V.print_term tm) (V.print_term ans); *)
-  ans
-
-let subst x v tm = reduce ~env:[x,v] tm
-
-let substs s tm = reduce ~env:s tm
-
-let fresh_ref =
-  let n = ref 0 in
-  fun () ->
-    incr n;
-    Printf.sprintf "saml_ref%d" !n
-
-(** Extract the state from a term. *)
-(* TODO: in x = ref r, check that r does not have free variables other than
-   previously defined refs *)
-(* TODO: this could be merged with reduce? *)
-let rec extract_state tm =
-  (* Printf.printf "extract_state: %s\n%!" (V.print_term tm); *)
+  let merge s1 s2 = s1@s2 in
   let mk tm' = { term = tm'; t = tm.t } in
-  let merge_state p a b =
-    { prog = p; refs = b.refs@a.refs }
+  let beta_reduce tm =
+    let r, tm = reduce tm in
+    assert (r = []);
+    tm
   in
   match tm.term with
-    | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> { prog = tm; refs = [] }
-    | Let ({ def = { term = Ref r } } as l) ->
-      let x = l.var in
-      let x' = fresh_ref () in
-      let body = subst x (make_term (Var x')) l.body in
-      let state = extract_state body in
-      { state with refs = (x', r)::state.refs }
+    | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> [], tm
     | Let l ->
-      let def = extract_state l.def in
-      let body = extract_state l.body in
-      let l = { l with def = def.prog; body = body.prog } in
-      merge_state (mk (Let l)) def body
-    | Ref v ->
-      let v = extract_state v in
-      { v with prog = mk (Ref (v.prog)) }
-    | Get r ->
-      let r = extract_state r in
-      { r with prog = mk (Get (r.prog)) }
-    | Set (r,v) ->
-      let r = extract_state r in
-      let v = extract_state v in
-      merge_state (mk (Set (r.prog, v.prog))) r v
-    | Seq (a, b) ->
-      let a = extract_state a in
-      let b = extract_state b in
-      merge_state (mk (Seq (a.prog, b.prog))) a b
-    | Fun (vars, args, v) ->
-      let v = extract_state v in
-      { v with prog = mk (Fun (vars, args, v.prog)) }
-    | App (f,a) ->
-      let ans = ref (extract_state f) in
-      let a =
-        List.map
-          (fun (l,v) ->
-            let v = extract_state v in
-            ans := merge_state !ans.prog !ans v;
-            l, v.prog
-          ) a
+      let sdef, def = reduce l.def in
+      let sbody, body = reduce l.body in
+      let l = { l with def = def; body = body } in
+      let v =
+        if
+          (match l.def.t.T.descr with T.Arrow _ -> true | _ -> false)
+          || occurences l.var l.body <= 1
+        then
+          subst l.var l.def l.body
+        else
+          mk (Let l)
       in
-      let ans = !ans in
-      { ans with prog = mk (App (ans.prog, a)) }
+      merge sdef sbody, v
+    | Ref v ->
+      let sv, v = reduce v in
+      let x = fresh_ref () in
+      merge [x,v] sv, mk (Var x)
+    | Get r ->
+      let sr, r = reduce r in
+      sr, mk (Get r)
+    | Set (r,v) ->
+      let sr, r = reduce r in
+      let sv, v = reduce v in
+      merge sr sv, mk (Set (r, v))
+    | Seq (a, b) ->
+      let sa, a = reduce a in
+      let sb, b = reduce b in
+      let tm =
+        let rec aux a =
+          match a.term with
+            | Unit -> b
+            | Let l -> mk (Let { l with body = aux l.body })
+            | _ -> mk (Seq (a, b))
+        in
+        aux a
+      in
+      merge sa sb, tm
+    | Record r ->
+        (* Records get lazily evaluated in order not to generate variables for
+           the whole standard library. *)
+      [], tm
+      (*
+        let sr = ref [] in
+        let r =
+        T.Fields.map
+        (fun v ->
+        let s, v' = reduce v.rval in
+        sr := merge !sr s;
+        { v with rval = v' }
+        ) r
+        in
+        !sr, Record r
+      *)
+    | Field (r,x,o) ->
+      let sr, r = reduce r in
+      let sr = ref sr in
+      let tm =
+        let rec aux r =
+            (* Printf.printf "aux field: %s\n%!" (print_term r); *)
+          match r.term with
+            | Record r ->
+              (* TODO: use o *)
+              let s, v = reduce (T.Fields.find x r).rval in
+              sr := merge s !sr;
+              v
+            | Let l ->
+              mk (Let { l with body = aux l.body })
+        in
+        aux r
+      in
+      !sr, tm
+    | Fun (vars, args, v) ->
+      let sv, v = reduce v in
+      sv, mk (Fun (vars, args, v))
+    | App (f,a) ->
+      let sf, f = reduce f in
+      let sa, a =
+        let sa = ref [] in
+        let ans = ref [] in
+        List.iter
+          (fun (l,v) ->
+            let sv, v = reduce v in
+            sa := merge !sa sv;
+            ans := (l,v) :: !ans
+          ) a;
+        !sa, List.rev !ans
+      in
+      let tm =
+        let rec aux f =
+            (* Printf.printf "aux app: %s\n%!" (print_term f); *)
+          match f.term with
+            | Fun (vars, args, v) ->
+              let args = List.map (fun (l,x,t,v) -> l,(x,t,v)) args in
+              let args = ref args in
+              let v = ref v in
+              List.iter
+                (fun (l,va) ->
+                  let x,_,_ = List.assoc l !args in
+                  args := List.remove_assoc l !args;
+                  v := subst x va !v
+                ) a;
+              let args = List.map (fun (l,(x,t,v)) -> l,x,t,v) !args in
+                (* TODO: reduce optional arguments *)
+              if args = [] then
+                beta_reduce !v
+              else
+                mk (Fun (vars, args, !v))
+            | Let l ->
+              mk (Let { l with body = aux l.body })
+            | Var _ ->
+              mk (App (f, a))
+        in
+        aux f
+      in
+      merge sf sa, tm
 
 let rec emit_type t =
   (* Printf.printf "emit_type: %s\n%!" (T.print t); *)
@@ -317,17 +371,21 @@ let rec emit_prog tm =
     | Field (r,x,_) ->
       (* Records are always passed by reference. *)
       [B.Field ([B.Load (emit_prog r)], x)]
+    | Let l -> (B.Let (l.var, emit_prog l.def))::(emit_prog l.body)
     | Unit -> assert false
-    | Int _ -> assert false
+    | Int n -> [B.Int n]
     | Fun _ -> assert false
-    | Record _ -> assert false
-    | Replace_field _ | Open _ | Let _ -> assert false
+    | Record _ ->
+      (* We should not emit records since they are lazily evaluated (or
+         evaluation should be forced somehow). *)
+      assert false
+    | Replace_field _ | Open _ -> assert false
 
 (** Emit a prog which might start by decls (toplevel lets). *)
 let rec emit_decl_prog tm =
   (* Printf.printf "emit_decl_prog: %s\n%!" (print_term tm); *)
   match tm.term with
-    | Let l ->
+    | Let l when (match l.def.t.T.descr with T.Arrow _ -> true | _ -> false) ->
       Printf.printf "def: %s : %s\n%!" (print_term l.def) (T.print l.def.t);
       let t = emit_type l.def.t in
       (
@@ -341,7 +399,8 @@ let rec emit_decl_prog tm =
             let def =
               let args = List.map (fun (x, _) -> "", make_term (Var x)) args in
               let def = make_term (App (l.def, args)) in
-              reduce def
+              let _, def = reduce def in
+              def
             in
             let d = B.Decl (proto, emit_prog def) in
             let dd, p = emit_decl_prog l.body in
@@ -358,20 +417,21 @@ let rec emit_decl_prog tm =
     | _ -> [], emit_prog tm
 
 let emit name ~env ~venv tm =
-  Printf.printf "emit: %s : %s\n%!" (V.print_term tm) (T.print tm.t);
-  let prog = reduce ~toplevel:true ~venv ~env tm in
-  Printf.printf "reduced: %s\n%!" (V.print_term prog);
-  let prog = extract_state prog in
-  Printf.printf "extracted: %s\n%!" (V.print_term prog.prog);
+  Printf.printf "emit: %s : %s\n\n%!" (V.print_term tm) (T.print tm.t);
+  let venv = List.may_map (fun (x,v) -> try Some (x, term_of_value v) with _ -> None) venv in
+  let env = env@venv in
+  (* Printf.printf "env: %s\n%!" (String.concat " " (List.map fst env)); *)
+  let prog = substs env tm in
+  Printf.printf "closed term: %s\n\n%!" (V.print_term prog);
+  let refs, prog = reduce prog in
+  Printf.printf "reduced: %s\n\n%!" (V.print_term prog);
 
   (* Compute the state. *)
-  let refs = List.rev prog.refs in
   let refs_t = List.map (fun (x,v) -> x, emit_type v.V.t) refs in
   let refs = List.map (fun (x,v) -> x, emit_prog v) refs in
   let state_t = B.T.Struct refs_t in
 
   (* Emit the program. *)
-  let prog = prog.prog in
   let decls, prog = emit_decl_prog prog in
   let prog = B.Decl ((name, ["period", B.T.Float], emit_type tm.t), prog) in
   let decls = decls@[prog] in
@@ -391,6 +451,7 @@ let emit name ~env ~venv tm =
       (function
         | B.Decl ((name, args, t), prog) ->
           B.Decl ((name, ("state", B.T.Ptr state_t)::args, t), alias_state@prog)
+        | decl -> decl
       ) decls
   in
 
@@ -416,4 +477,6 @@ let emit name ~env ~venv tm =
   let free = [B.Free [B.Ident "state"]] in
   let free = B.Decl ((name^"_free", ["state", B.T.Ptr state_t], B.T.Void), free) in
 
-  reset::alloc::free::decls
+  let ans = reset::alloc::free::decls in
+  Printf.printf "emitted:\n%s\n\n%!" (B.print_decls ans);
+  ans

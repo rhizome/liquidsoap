@@ -7,10 +7,15 @@ open (math)
 
 def now () = time.now () end
 
+def f () =
+    r = ref (1.1)
+    3.
+end
+
+#saml.emit.generator.c(f ())
+
 #saml.emit.generator.c(3. * now())
 
-#saml.emit.c.generator(now*2.)
-#saml.emit.c.generator(sin(now*2.))
 def ff (y) =
     x = ref (5.)
     x := !x + 1.

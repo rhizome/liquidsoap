@@ -185,7 +185,7 @@ let rec print_term v = match v.term with
   | Record r ->
     "["^String.concat ", "
         (T.Fields.fold
-          (fun _ t l -> print_term t.rval :: l) r [])^"]"
+          (fun x t l -> (x ^ " = " ^ print_term t.rval)::l) r [])^"]"
   | Product (a,b) ->
       Printf.sprintf "(%s,%s)" (print_term a) (print_term b)
   | Ref a ->
@@ -521,10 +521,10 @@ struct
     | Record r ->
       let s =
         if T.Fields.is_empty r then "=" else
-          String.concat 
-            ", " 
+          String.concat
+            ", "
             (T.Fields.fold
-               (fun x v l -> (x ^ " = " ^ print_value v.v_value) :: l) 
+               (fun x v l -> (x ^ " = " ^ print_value v.v_value) :: l)
                r [])
       in
       "["^ s ^ "]"
@@ -533,12 +533,12 @@ struct
     | Product (a,b) ->
       Printf.sprintf "(%s,%s)" (print_value a) (print_value b)
     | Fun ([],_,_,x) when is_ground x -> "{"^print_term x^"}"
-    | Fun (l,_,_,x) when is_ground x -> 
+    | Fun (l,_,_,x) when is_ground x ->
       let f (label,_,value) =
         match label, value with
           | "",    None -> "_"
           | "",    Some v -> Printf.sprintf "_=%s" (print_value v)
-          | label, Some v -> 
+          | label, Some v ->
             Printf.sprintf "~%s=%s" label (print_value v)
           | label, None ->
             Printf.sprintf "~%s" label

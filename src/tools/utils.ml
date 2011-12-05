@@ -30,7 +30,28 @@ external force_locale : unit -> unit = "liquidsoap_set_locale"
 let () = 
   force_locale ()
 
+module Stdlib = struct
+  module List = struct
+    include List
+
+    let rec remove_all_assoc x = function
+      | (y,_)::l when y = x -> remove_all_assoc x l
+      | (y,v)::l -> (y,v)::(remove_all_assoc x l)
+      | [] -> []
+
+    let rec may_map f = function
+      | x::l ->
+        (
+          match f x with
+            | Some x -> x::(may_map f l)
+            | None -> may_map f l
+        )
+      | [] -> []
+  end
+end
+
 (* Several list utilities *)
+(* TODO: convert those to Stdlib *)
 
 let rec make_list n v = if n = 0 then [] else v::(make_list (n-1) v)
 
