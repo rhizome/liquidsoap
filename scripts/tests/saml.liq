@@ -5,6 +5,8 @@
 open (saml)
 open (math)
 
+def ignore (x) = () end
+
 def now () = time.now () end
 
 def f () =
@@ -24,22 +26,39 @@ end
 #saml.emit.c.generator(f(3.))
 
 def voice (f) =
-    freq = ref(1.01)
+    freq = ref(1.)
     def set_freq (f) = freq := f end
-#    velocity = ref (1.02)
-#    def set_velocity (v) = velocity := v end
+    velocity = ref (1.)
+    def set_velocity (v) = velocity := v end
     [
         set_freq = set_freq,
-#        set_velocity = set_velocity,
-#        main = !velocity * f (!freq)
-        main = f (!freq)
+        set_velocity = set_velocity,
+        main = !velocity * f (!freq)
     ]
 end
 
 #saml.emit.generator.c(sin(440. * time.now()))
 
+def f () =
+    r = [ a = 3., b = .2 ]
+    r.b
+end
+
+#saml.emit.generator.c(f())
+
+def f () =
+    r = ref(6.)
+    [
+        set_freq = fun (x) -> r := x,
+        set_velocity = fun (x) -> r := x,
+        main = 5.
+    ]
+end
+
+#saml.emit.generator.dssi.c(f())
+
 def osc () =
-    def f (freq) = sin(freq * now()) end
+    def f (freq) = sin(2. * pi * freq * now()) end
     voice(f)
 end
 

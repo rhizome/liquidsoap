@@ -20,7 +20,9 @@ type stateful =
 let builtin_prefix = "#saml_"
 let builtin_prefix_re = Str.regexp ("^"^builtin_prefix)
 
-let meta_vars = ["period"]
+let default_meta_vars = ["period"]
+
+let meta_vars = ref default_meta_vars
 
 let make_term ?t tm =
   let t =
@@ -53,6 +55,9 @@ let make_field ?t ?opt r x =
   in
   make_term ?t (Field (r, x, opt))
 
+let make_var ?t x =
+  make_term ?t (Var x)
+
 (** Generate a fresh reference name. *)
 let fresh_ref =
   let n = ref 0 in
@@ -78,6 +83,9 @@ let rec free_vars tm =
     | Ref r | Get r -> fv r
     | Set (r,v) -> u (fv r) (fv v)
     | Record r -> T.Fields.fold (fun _ v f -> u (fv v.rval) f) r []
+    | Field (r,x,o) ->
+      let o = match o with Some o -> fv o | None -> [] in
+      u (fv r) o
     | Let l -> u (fv l.def) (r [l.var] (fv l.body))
     | Fun (_, p, v) ->
       let p = List.map (fun (_,x,_,_) -> x) p in
@@ -120,7 +128,7 @@ let rec substs ss tm =
         let def = s l.def in
         let ss = List.remove_all_assoc l.var ss in
         let s = s ~ss in
-        let var = fresh_var () in
+        let var = if List.mem l.var !meta_vars then l.var else fresh_var () in
         let body = subst l.var (make_term (Var var)) l.body in
         let body = s body in
         let l = { l with var = var; def = def; body = body } in
@@ -184,6 +192,7 @@ let rec term_of_value v =
         let t = substs venv t in
         (* TODO: fill vars? *)
         Fun (V.Vars.empty, params, t)
+      | V.V.Float f -> Float f
   in
   make_term term
 
@@ -200,19 +209,21 @@ let rec reduce tm =
   match tm.term with
     | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> [], tm
     | Let l ->
-      let sdef, def = reduce l.def in
-      let sbody, body = reduce l.body in
-      let l = { l with def = def; body = body } in
-      let v =
-        if
-          (match l.def.t.T.descr with T.Arrow _ -> true | _ -> false)
+      if
+        (
+          (match (T.deref l.def.t).T.descr with T.Arrow _ | T.Record _ -> true | _ -> false)
           || occurences l.var l.body <= 1
-        then
-          subst l.var l.def l.body
-        else
-          mk (Let l)
-      in
-      merge sdef sbody, v
+        ) && not (List.mem l.var !meta_vars)
+      then
+        let sdef, def = reduce l.def in
+        let body = subst l.var def l.body in
+        let sbody, body = reduce body in
+        merge sdef sbody, body
+      else
+        let sdef, def = reduce l.def in
+        let sbody, body = reduce l.body in
+        let l = { l with def = def; body = body } in
+        merge sdef sbody, mk (Let l)
     | Ref v ->
       let sv, v = reduce v in
       let x = fresh_ref () in
@@ -238,27 +249,27 @@ let rec reduce tm =
       in
       merge sa sb, tm
     | Record r ->
-        (* Records get lazily evaluated in order not to generate variables for
-           the whole standard library. *)
+      (* Records get lazily evaluated in order not to generate variables for
+         the whole standard library. *)
       [], tm
-      (*
-        let sr = ref [] in
-        let r =
-        T.Fields.map
-        (fun v ->
-        let s, v' = reduce v.rval in
-        sr := merge !sr s;
-        { v with rval = v' }
-        ) r
-        in
-        !sr, Record r
-      *)
+    (*
+      let sr = ref [] in
+      let r =
+      T.Fields.map
+      (fun v ->
+      let s, v' = reduce v.rval in
+      sr := merge !sr s;
+      { v with rval = v' }
+      ) r
+      in
+      !sr, Record r
+    *)
     | Field (r,x,o) ->
       let sr, r = reduce r in
       let sr = ref sr in
       let tm =
         let rec aux r =
-            (* Printf.printf "aux field: %s\n%!" (print_term r); *)
+          (* Printf.printf "aux field (%s): %s\n%!" x(print_term r); *)
           match r.term with
             | Record r ->
               (* TODO: use o *)
@@ -289,7 +300,7 @@ let rec reduce tm =
       in
       let tm =
         let rec aux f =
-            (* Printf.printf "aux app: %s\n%!" (print_term f); *)
+          (* Printf.printf "aux app: %s\n%!" (print_term f); *)
           match f.term with
             | Fun (vars, args, v) ->
               let args = List.map (fun (l,x,t,v) -> l,(x,t,v)) args in
@@ -302,7 +313,7 @@ let rec reduce tm =
                   v := subst x va !v
                 ) a;
               let args = List.map (fun (l,(x,t,v)) -> l,x,t,v) !args in
-                (* TODO: reduce optional arguments *)
+              (* TODO: reduce optional arguments *)
               if args = [] then
                 beta_reduce !v
               else
@@ -348,6 +359,7 @@ let rec emit_prog tm =
     | App _ ->
       let x, l = focalize_app tm in
       (
+        (* Printf.printf "emit_prog app: %s\n%!" (print_term (make_term x)); *)
         match x with
           | Var x when Str.string_match builtin_prefix_re x 0 ->
             let x =
@@ -372,7 +384,7 @@ let rec emit_prog tm =
       (* Records are always passed by reference. *)
       [B.Field ([B.Load (emit_prog r)], x)]
     | Let l -> (B.Let (l.var, emit_prog l.def))::(emit_prog l.body)
-    | Unit -> assert false
+    | Unit -> []
     | Int n -> [B.Int n]
     | Fun _ -> assert false
     | Record _ ->
@@ -383,9 +395,9 @@ let rec emit_prog tm =
 
 (** Emit a prog which might start by decls (toplevel lets). *)
 let rec emit_decl_prog tm =
-  (* Printf.printf "emit_decl_prog: %s\n%!" (print_term tm); *)
+  Printf.printf "emit_decl_prog: %s\n%!" (print_term tm);
   match tm.term with
-    | Let l when (match l.def.t.T.descr with T.Arrow _ -> true | _ -> false) ->
+    | Let l when (match (T.deref l.def.t).T.descr with T.Arrow _ -> true | _ -> false) ->
       Printf.printf "def: %s : %s\n%!" (print_term l.def) (T.print l.def.t);
       let t = emit_type l.def.t in
       (
@@ -416,7 +428,8 @@ let rec emit_decl_prog tm =
       )
     | _ -> [], emit_prog tm
 
-let emit name ~env ~venv tm =
+let emit name ?(keep_let=[]) ~env ~venv tm =
+  meta_vars := keep_let @ default_meta_vars;
   Printf.printf "emit: %s : %s\n\n%!" (V.print_term tm) (T.print tm.t);
   let venv = List.may_map (fun (x,v) -> try Some (x, term_of_value v) with _ -> None) venv in
   let env = env@venv in

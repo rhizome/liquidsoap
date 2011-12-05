@@ -65,15 +65,30 @@ let register_builtins () =
       let fname = Lang.to_string (List.assoc "file" args) in
       let name = Lang.to_string (List.assoc "name" args) in
       let v = List.assoc "" args in
-      let env,venv,r =
+      let env,venv,v =
         match v.Lang.value with
           | Lang.Quote (env,venv,v) -> env,venv,v
           | _ -> assert false
       in
-      let v = SV.make_field ~t:Lang.float_t r "main" in
-      let v = SV.make_let (name^"_set_freq") (SV.make_field ~t:(T.make (T.Arrow([false,"",Lang.float_t], Lang.unit_t))) r "set_freq") v in
-      (* let v = SV.make_let (name^"_set_velocity") (SV.make_field ~t:(T.make (T.Arrow([false,"",Lang.float_t], Lang.unit_t))) r "set_velocity") v in *)
-      let v = SV.emit name ~venv ~env v in
+      let v =
+        let synth = "#synth" in
+        let prog = SV.make_field ~t:Lang.float_t (SV.make_var synth) "main" in
+        let prog =
+          SV.make_let
+            (name^"_set_freq")
+            (SV.make_field ~t:(T.make (T.Arrow([false,"",Lang.float_t], Lang.unit_t))) (SV.make_var synth) "set_freq")
+            prog
+        in
+        let prog =
+          SV.make_let
+            (name^"_set_velocity")
+            (SV.make_field ~t:(T.make (T.Arrow([false,"",Lang.float_t], Lang.unit_t))) (SV.make_var synth) "set_velocity")
+            prog
+        in
+        SV.make_let synth v prog
+      in
+      let keep_let = [name^"_set_freq"; name^"_set_velocity"] in
+      let v = SV.emit name ~keep_let ~venv ~env v in
       let v = SB.Emitter_C.emit_dssi v in
       Printf.printf "EMIT: %s\n\n%!" fname;
       Printf.printf "BEGIN\n%s\nEND\n%!" v;
