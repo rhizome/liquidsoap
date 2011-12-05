@@ -443,6 +443,7 @@ let emit name ?(keep_let=[]) ~env ~venv tm =
   let refs_t = List.map (fun (x,v) -> x, emit_type v.V.t) refs in
   let refs = List.map (fun (x,v) -> x, emit_prog v) refs in
   let state_t = B.T.Struct refs_t in
+  let state_decl = B.Decl_type ("saml_state", state_t) in
 
   (* Emit the program. *)
   let decls, prog = emit_decl_prog prog in
@@ -490,6 +491,6 @@ let emit name ?(keep_let=[]) ~env ~venv tm =
   let free = [B.Free [B.Ident "state"]] in
   let free = B.Decl ((name^"_free", ["state", B.T.Ptr state_t], B.T.Void), free) in
 
-  let ans = reset::alloc::free::decls in
+  let ans = state_decl::reset::alloc::free::decls in
   Printf.printf "emitted:\n%s\n\n%!" (B.print_decls ans);
   ans

@@ -60,6 +60,7 @@ and prog = expr list
 and decl =
   | Decl of proto * prog
   | Decl_cst of string * expr
+  | Decl_type of string * T.t
   (* | External of proto *)
 
 (** Prototype of a function: name, typed arguments and return type. *)
@@ -101,6 +102,8 @@ let print_decl = function
     Printf.sprintf "decl %s(%s) : %s = %s" name args (T.print t) (print_prog p)
   | Decl_cst (name, e) ->
     Printf.sprintf "decl %s = %s" name (print_expr e)
+  | Decl_type (tn, t) ->
+    Printf.sprintf "tdecl %s = %s" tn (T.print t)
 
 let print_decls d =
   let d = List.map print_decl d in
@@ -179,13 +182,19 @@ module Emitter_C = struct
 
   let type_decl =
     let n = ref 0 in
-    fun t ->
+    fun ?name t ->
       try
+        if name <> None then raise Not_found;
         List.assoc t !Env.type_decls
       with
         | Not_found ->
-          incr n;
-          let tn = Printf.sprintf "saml_type%d" !n in
+          let tn =
+            match name with
+              | Some name -> name
+              | None ->
+                incr n;
+                Printf.sprintf "saml_type%d" !n
+          in
           Env.type_decls := (t,tn) :: !Env.type_decls;
           tn
 
@@ -317,6 +326,7 @@ module Emitter_C = struct
             | _ -> assert false
         in
         Printf.sprintf "%s %s = %s" (emit_type t) x e
+      | Decl_type (name, t) -> ignore (type_decl ~name (emit_type ~use_decls:false t)); ""
 
   let default_includes = ["stdlib.h"; "math.h"]
 
@@ -338,7 +348,7 @@ module Emitter_C = struct
     let includes = emit_includes default_includes in
     String.concat "\n\n" (includes::td::d)
 
-  let emit_dssi ?env d =
+  let emit_dssi ?env ~name d =
     (*
     let dssi_descriptor_t =
       T.Struct
@@ -370,5 +380,16 @@ module Emitter_C = struct
     let d = List.map (emit_decl ~env) d in
     let td = emit_type_decls () in
     let includes = emit_includes default_includes in
-    String.concat "\n\n" (includes::td::d)
+    let ans = String.concat "\n\n" (includes::td::d) ^ "\n\n"in
+    let ans = ref ans in
+    let add s = ans := !ans ^ s ^ "\n" in
+    add (Printf.sprintf "#define STATE saml_state");
+    add (Printf.sprintf "#define SAML_name %S" name);
+    add (Printf.sprintf "#define SAML_synth_alloc %s" (name^"_alloc"));
+    add (Printf.sprintf "#define SAML_synth_reset %s" (name^"_reset"));
+    add (Printf.sprintf "#define SAML_synth_free %s" (name^"_free"));
+    add (Printf.sprintf "#define SAML_synth_set_velocity %s" (name^"_set_velocity"));
+    add (Printf.sprintf "#define SAML_synth_set_freq %s" (name^"_set_freq"));
+    add Saml_dssi.c;
+    !ans
 end

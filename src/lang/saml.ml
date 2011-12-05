@@ -54,7 +54,7 @@ let register_builtins () =
   in
   add_builtin "emit.generator.dssi.c"
     [
-      "file", Lang.string_t, Some (Lang.string "/tmp/saml_out.c"), Some "Output file name.";
+      "file", Lang.string_t, Some (Lang.string "/tmp/saml_out"), Some "Output file name.";
       "name", Lang.string_t, Some (Lang.string "saml_synth"), Some "Name of the synthesizer.";
       "", voice_t, None, Some "";
     ]
@@ -89,13 +89,13 @@ let register_builtins () =
       in
       let keep_let = [name^"_set_freq"; name^"_set_velocity"] in
       let v = SV.emit name ~keep_let ~venv ~env v in
-      let v = SB.Emitter_C.emit_dssi v in
+      let v = SB.Emitter_C.emit_dssi ~name v in
       Printf.printf "EMIT: %s\n\n%!" fname;
       Printf.printf "BEGIN\n%s\nEND\n%!" v;
-      let fname = fname in
-      let oc = open_out fname in
+      let oc = open_out (fname ^ ".c") in
       output_string oc v;
       close_out oc;
+      ignore (Sys.command (Printf.sprintf "gcc -fPIC -shared -Wall %s.c -o %s.so" fname fname));
       Lang.unit
     );
   Saml_builtins.register ()

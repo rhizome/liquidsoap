@@ -244,7 +244,7 @@ $(call conditional_compilation,io,$(W_ALSA),io/alsa_io.ml)
 $(call conditional_compilation,operators,$(W_GD),operators/video_text_gd.ml)
 
 liquidsoap_sources += \
-	lang/saml_backend.ml lang/lang_types.ml lang/lang_values.ml \
+	lang/saml_dssi.ml lang/saml_backend.ml lang/lang_types.ml lang/lang_values.ml \
 	lang/lang_encoders.ml lang/lang_parser.ml lang/lang_lexer.ml \
 	lang/lang_pp.ml lang/lang.ml lang/saml_values.ml \
 	tools/start_stop.ml tools/ioRing.ml tools/icecast_utils.ml \
