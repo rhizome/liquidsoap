@@ -8,6 +8,8 @@ def saml.time.integrator (x) =
     y = ref 0.
     ans = !y
     y := !y + x * period
+    # TODO: optimize this
+    #if periodic then y := !y mod 1. end
     ans
 end
 
@@ -52,7 +54,7 @@ end
 
 saml.env = [=]
 
-def saml.env.adsr (~a=0.1,~d=0.08,~s=0.8,~r=0.5,x) =
+def saml.env.adsr (~a=0.05,~d=0.02,~s=0.8,~r=0.5,x) =
     t = saml.time.now()
     if t < a then
         x * t / a

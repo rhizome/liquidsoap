@@ -34,7 +34,8 @@ end
 
 (** An operation. *)
 type op =
-  | FAdd | FSub | FMul | FDiv | FLt
+  | FAdd | FSub | FMul | FDiv | FRem
+  | FLt
   | Call of string
 
 (** An expression. *)
@@ -75,6 +76,7 @@ let print_op = function
   | FSub -> "-"
   | FMul -> "*"
   | FDiv -> "/"
+  | FRem -> "mod"
   | FLt -> "<"
   | Call x -> x
 

@@ -9,14 +9,6 @@ module T = Lang_types
 
 type t = V.term
 
-(** A stateful program. *)
-type stateful =
-    {
-      prog : term;
-      (* Notice that refs are in reverse order! *)
-      refs : (string * term) list;
-    }
-
 let builtin_prefix = "#saml_"
 let builtin_prefix_re = Str.regexp ("^"^builtin_prefix)
 
@@ -88,8 +80,9 @@ let rec free_vars tm =
       u (fv r) o
     | Let l -> u (fv l.def) (r [l.var] (fv l.body))
     | Fun (_, p, v) ->
+      let o = List.fold_left (fun f (_,_,_,o) -> match o with None -> f | Some o -> u (fv o) f) [] p in
       let p = List.map (fun (_,x,_,_) -> x) p in
-      r p (fv v)
+      u o (r p (fv v))
     | App (f,a) ->
       let a = List.fold_left (fun f (_,v) -> u f (fv v)) [] a in
       u (fv f) a
@@ -393,6 +386,7 @@ let rec emit_prog tm =
                       | "sub" -> B.FSub
                       | "mul" -> B.FMul
                       | "div" -> B.FDiv
+                      | "mod" -> B.FRem
                       | "lt" -> B.FLt
                       | _ -> B.Call x
                   in
