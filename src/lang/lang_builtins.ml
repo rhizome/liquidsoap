@@ -452,7 +452,7 @@ let () =
     register_op ~extern:"mul" "Multiplication" "*" ( * ) ( *. ) ;
     register_op ~extern:"div" "Division" "/" (/) (/.) ;
     register_op ~extern:"add" "Addition" "+" (+) (+.) ;
-    register_op "Substraction " "-" (-) (-.) ;
+    register_op ~extern:"sub" "Substraction " "-" (-) (-.) ;
     register_op "Exponentiation" "pow"
       (fun a b -> int_of_float ((float_of_int a) ** float_of_int b)) ( ** )
 

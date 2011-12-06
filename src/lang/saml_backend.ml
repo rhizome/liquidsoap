@@ -42,6 +42,7 @@ type expr =
   | Let of string * prog
   | Int of int
   | Float of float
+  | Bool of bool
   | Ident of string
   | Alloc of T.t
   | Free of prog
@@ -81,6 +82,7 @@ let rec print_expr = function
   | Let (x,p) -> Printf.sprintf "let %s = %s" x (print_prog p)
   | Int n -> Printf.sprintf "%d" n
   | Float f -> Printf.sprintf "%f" f
+  | Bool b -> Printf.sprintf "%B" b
   | Ident x -> x
   | Alloc t -> Printf.sprintf "alloc{%s}" (T.print t)
   | Free p -> Printf.sprintf "free(%s)" (print_prog p)
@@ -157,6 +159,7 @@ module Emitter_C = struct
     | Ident x -> List.assoc x env.Env.vars
     | Int _ -> T.Int
     | Float _ -> T.Float
+    | Bool _ -> T.Bool
     | Alloc t -> T.Ptr t
     | Free _ -> T.Void
     | Load r ->
@@ -247,6 +250,8 @@ module Emitter_C = struct
         env, [return (Printf.sprintf "%d" n)]
       | Float f ->
         env, [return (Printf.sprintf "%f" f)]
+      | Bool b ->
+        env, [return (if b then "1" else "0")]
       | Ident x ->
         env, [return (Printf.sprintf "%s" x)]
       | Address_of p ->
@@ -283,7 +288,7 @@ module Emitter_C = struct
         let b = append_last ";" b in
         let _, p1 = emit_prog ~return ~env p1 in
         let _, p2 = emit_prog ~return ~env p2 in
-        env, b@[Printf.sprintf "if (%s) {%s;} else {%s;}" tmp (String.concat " " p1) (String.concat " " p2)]
+        env, b@[Printf.sprintf "if (%s) {\n%s;\n} else {\n%s;\n}" tmp (String.concat "\n" p1) (String.concat "\n" p2)]
       | Op (op, args) ->
         let tmp_vars = ref [] in
         (* Precomputation of the arguments *)
@@ -423,6 +428,9 @@ module Emitter_C = struct
     add (Printf.sprintf "#define SAML_synth_free %s" (name^"_free"));
     add (Printf.sprintf "#define SAML_synth_set_velocity %s" (name^"_set_velocity"));
     add (Printf.sprintf "#define SAML_synth_set_freq %s" (name^"_set_freq"));
+    add (Printf.sprintf "#define SAML_synth_note_off %s" (name^"_note_off"));
+    add (Printf.sprintf "#define SAML_synth_is_active %s" (name^"_is_active"));
+    add (Printf.sprintf "#define SAML_synth_activate %s" (name^"_activate"));
     add Saml_dssi.c;
     !ans
 end

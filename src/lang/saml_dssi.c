@@ -36,8 +36,6 @@ const DSSI_Descriptor *dssi_descriptor(unsigned long index)
 typedef struct
 {
   LADSPA_Data *output;
-  /* Is a voice being played? */
-  int active[POLYPHONY];
   /* Internal state of a voice. */
   STATE *state[POLYPHONY];
   float period;
@@ -52,7 +50,6 @@ static LADSPA_Handle SAML_instantiate(const LADSPA_Descriptor *descriptor, unsig
   for (i = 0; i < POLYPHONY; i++)
     h->state[i] = SAML_synth_alloc();
   h->period = 1. / (float)sample_rate;
-  printf("samle_rate: %d\n", (int)sample_rate);
 
   return (LADSPA_Handle)h;
 }
@@ -75,10 +72,7 @@ static void SAML_activate(LADSPA_Handle instance)
   int i;
 
   for (i = 0; i < POLYPHONY; i++)
-    {
-      h->active[i] = 0;
-      SAML_synth_reset(h->state[i]);
-    }
+    SAML_synth_reset(h->state[i]);
 }
 
 /* Mute all voices. */
@@ -88,7 +82,7 @@ void SAML_deactivate(LADSPA_Handle instance)
   int i;
 
   for (i = 0; i < POLYPHONY; i++)
-    h->active[i] = 0;
+    SAML_synth_reset(h->state[i]);
 }
 
 /* Free internal structures of the synth. */
@@ -147,10 +141,14 @@ static void SAML_run_synth(LADSPA_Handle instance, unsigned long sample_count, s
               SAML_synth_set_velocity(h->state[note], (float)events[event_pos].data.note.velocity / 127.0f);
               printf("note: %d\n", (int)note);
               SAML_synth_set_freq(h->state[note], 440. * pow(2.,(note - 69.)/12.));
-              h->active[note] = events[event_pos].data.note.velocity > 0;
+              if (events[event_pos].data.note.velocity > 0)
+                SAML_synth_activate(h->state[note]);
             }
           else if (events[event_pos].type == SND_SEQ_EVENT_NOTEOFF)
-            h->active[events[event_pos].data.note.note] = 0;
+            {
+              note = events[event_pos].data.note.note;
+              SAML_synth_note_off(h->state[note]);
+            }
           event_pos++;
         }
 
@@ -158,7 +156,7 @@ static void SAML_run_synth(LADSPA_Handle instance, unsigned long sample_count, s
          way so its really obvious whats going on. */
       h->output[pos] = 0.0f;
       for (note = 0; note < POLYPHONY; note++)
-        if (h->active[note])
+        if (SAML_synth_is_active(h->state[note]))
           h->output[pos] += saml_synth(h->state[note], h->period);
     }
 }

@@ -47,6 +47,9 @@ let register_builtins () =
       close_out oc;
       Lang.unit
     );
+  let arr t1 t2 = T.make (T.Arrow([false,"",t1], t2)) in
+  let zarr t = T.make (T.Arrow([], t)) in
+  let f_u () = arr Lang.float_t Lang.unit_t in
   let voice_t =
     let r = ["main", Lang.float_t] in
     let r = List.map (fun (x,t) -> x, (([],t),false)) r in
@@ -76,18 +79,36 @@ let register_builtins () =
         let prog =
           SV.make_let
             (name^"_set_freq")
-            (SV.make_field ~t:(T.make (T.Arrow([false,"",Lang.float_t], Lang.unit_t))) (SV.make_var synth) "set_freq")
+            (SV.make_field ~t:(f_u ()) (SV.make_var synth) "set_freq")
             prog
         in
         let prog =
           SV.make_let
             (name^"_set_velocity")
-            (SV.make_field ~t:(T.make (T.Arrow([false,"",Lang.float_t], Lang.unit_t))) (SV.make_var synth) "set_velocity")
+            (SV.make_field ~t:(f_u ()) (SV.make_var synth) "set_velocity")
+            prog
+        in
+        let prog =
+          SV.make_let
+            (name^"_note_off")
+            (SV.make_field ~t:(zarr Lang.unit_t) (SV.make_var synth) "note_off")
+            prog
+        in
+        let prog =
+          SV.make_let
+            (name^"_is_active")
+            (SV.make_field ~t:(zarr Lang.bool_t) (SV.make_var synth) "is_active")
+            prog
+        in
+        let prog =
+          SV.make_let
+            (name^"_activate")
+            (SV.make_field ~t:(zarr Lang.bool_t) (SV.make_var synth) "activate")
             prog
         in
         SV.make_let synth v prog
       in
-      let keep_let = [name^"_set_freq"; name^"_set_velocity"] in
+      let keep_let = [name^"_set_freq"; name^"_set_velocity";name^"_note_off";name^"_is_active";name^"_activate"] in
       let v = SV.emit name ~keep_let ~venv ~env v in
       let v = SB.Emitter_C.emit_dssi ~name v in
       Printf.printf "EMIT: %s\n\n%!" fname;
@@ -95,7 +116,7 @@ let register_builtins () =
       let oc = open_out (fname ^ ".c") in
       output_string oc v;
       close_out oc;
-      ignore (Sys.command (Printf.sprintf "gcc -fPIC -O3 -shared -Wall %s.c -o %s.so" fname fname));
+      ignore (Sys.command (Printf.sprintf "gcc -fPIC -O3 -g -shared -Wall %s.c -o %s.so" fname fname));
       Lang.unit
     );
   Saml_builtins.register ()

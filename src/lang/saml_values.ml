@@ -264,7 +264,7 @@ let rec reduce tm =
       let sr = ref sr in
       let tm =
         let rec aux r =
-          (* Printf.printf "aux field (%s): %s\n%!" x(print_term r); *)
+          (* Printf.printf "aux field (%s): %s\n%!" x (print_term r); *)
           match r.term with
             | Record r ->
               (* TODO: use o *)
@@ -337,6 +337,7 @@ let rec emit_type t =
   (* Printf.printf "emit_type: %s\n%!" (T.print t); *)
   match (T.deref t).T.descr with
     | T.Ground T.Unit -> B.T.Void
+    | T.Ground T.Bool -> B.T.Bool
     | T.Ground T.Float -> B.T.Float
     | T.Constr { T.name = "ref"; params = [_,t] } -> B.T.Ptr (emit_type t)
     | T.Arrow (args, t) ->
@@ -354,6 +355,7 @@ let rec emit_prog tm =
       | x -> x,[]
   in
   match tm.term with
+    | Bool b -> [B.Bool b]
     | Float f -> [B.Float f]
     | Var x -> [B.Ident x]
     | Ref r ->
