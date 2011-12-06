@@ -922,11 +922,13 @@ let rec check ?(print_toplevel=false) ~level ~env e =
         check ~print_toplevel ~level:(level+1) ~env body ;
         e.t >: body.t
 
+let default_typing_env = ref []
+
 (* The simple definition for external use. *)
 let check ?(ignored=false) e =
   let print_toplevel = !Configure.display_types in
     try
-      check ~print_toplevel ~level:(List.length builtins#get_all) ~env:[] e ;
+      check ~print_toplevel ~level:(List.length builtins#get_all) ~env:(!default_typing_env) e ;
       if ignored && not (can_ignore e.t) then raise_ignored e ;
       pop_tasks ()
     with

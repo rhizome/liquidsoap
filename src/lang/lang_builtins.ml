@@ -450,7 +450,7 @@ let () =
            | _ -> assert false)
   in
     register_op ~extern:"mul" "Multiplication" "*" ( * ) ( *. ) ;
-    register_op "Division" "/" (/) (/.) ;
+    register_op ~extern:"div" "Division" "/" (/) (/.) ;
     register_op ~extern:"add" "Addition" "+" (+) (+.) ;
     register_op "Substraction " "-" (-) (-.) ;
     register_op "Exponentiation" "pow"
@@ -500,8 +500,8 @@ let compare_value a b =
 
 let () =
   let t = Lang.univ_t ~constraints:[Lang_types.Ord] 1 in
-  let register_op name op =
-    add_builtin name ~cat:Bool ~descr:"Comparison of comparable values."
+  let register_op ?extern name op =
+    add_builtin name ~cat:Bool ~descr:"Comparison of comparable values." ?extern
       ["",t,None,None;"",t,None,None] Lang.bool_t
       (function
          | ["",a;"",b] -> Lang.bool (op (compare_value a b))
@@ -509,7 +509,7 @@ let () =
   in
     register_op "==" (fun c -> c = 0) ;
     register_op "!=" (fun c -> c <> 0) ;
-    register_op "<"  (fun c -> c = -1) ;
+    register_op "<"  ~extern:"lt" (fun c -> c = -1) ;
     register_op "<=" (fun c -> c <> 1) ;
     register_op ">=" (fun c -> c <> -1) ;
     register_op ">"  (fun c -> c = 1)
@@ -1162,6 +1162,7 @@ let () =
     ~category:(string_of_category Control)
     ~descr:"The basic conditional."
     ~flags:[Lang.Hidden]
+    ~extern:"if_then_else"
     [ "",Lang.bool_t,None,None ;
       "then", Lang.fun_t [] (Lang.univ_t 1), None,None ;
       "else", Lang.fun_t [] (Lang.univ_t 1), None,None ]

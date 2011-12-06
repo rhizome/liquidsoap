@@ -9,6 +9,7 @@ module T = struct
   (** A type. *)
   type t =
     | Void
+    | Bool
     | Int
     | Float
     | Ptr of t
@@ -19,6 +20,7 @@ module T = struct
 
   let rec print = function
     | Void -> "void"
+    | Bool -> "bool"
     | Int -> "int"
     | Float -> "float"
     | Ptr t -> Printf.sprintf "%s ptr" (print t)
@@ -32,7 +34,7 @@ end
 
 (** An operation. *)
 type op =
-  | FAdd | FSub | FMul | FDiv
+  | FAdd | FSub | FMul | FDiv | FLt
   | Call of string
 
 (** An expression. *)
@@ -49,6 +51,7 @@ type expr =
   | Store of prog * prog
   | Field of prog * string
   | Address_of of prog
+  | If of prog * prog * prog (** If then else *)
   | Op of op * prog array
   (** NULL pointer (of a given type). *)
   | Null of T.t
@@ -71,6 +74,7 @@ let print_op = function
   | FSub -> "-"
   | FMul -> "*"
   | FDiv -> "/"
+  | FLt -> "<"
   | Call x -> x
 
 let rec print_expr = function
@@ -89,6 +93,7 @@ let rec print_expr = function
     let args = List.map print_prog args in
     let args = String.concat "," args in
     Printf.sprintf "%s(%s)" (print_op op) args
+  | If (p,p1,p2) -> Printf.sprintf "if (%s) then (%s) else (%s)" (print_prog p) (print_prog p1) (print_prog p2)
   | Null t -> Printf.sprintf "null{%s}" (T.print t)
 
 and print_prog p =
@@ -133,19 +138,20 @@ module Emitter_C = struct
       let ff_f = [T.Float; T.Float], T.Float in
       {
         vars = vars;
-        ops = [ FAdd, ff_f; FSub, ff_f; FMul, ff_f; FDiv, ff_f; Call "sin", f_f ]
+        ops = [ FAdd, ff_f; FSub, ff_f; FMul, ff_f; FDiv, ff_f; FLt, ff_f; Call "sin", f_f ]
       }
   end
 
   let rec map_last f = function
-    | [] -> assert false
-    | [x] ->
-      let x = String.sub x 0 (String.length x - 1) in
-      [f x ^ ";"]
+    | [] -> []
+    | [x] -> [f x]
     | x::xx -> x::(map_last f xx)
 
   let prepend_last s l =
     map_last (fun x -> s^x) l
+
+  let append_last s l =
+    map_last (fun x -> x^s) l
 
   let rec expr_type ~env = function
     | Ident x -> List.assoc x env.Env.vars
@@ -170,6 +176,7 @@ module Emitter_C = struct
       in
       List.assoc x t
     | Address_of r -> T.Ptr (prog_type ~env r)
+    | If (p,p1,p2) -> prog_type ~env p1
     | Null t -> t
 
   and prog_type ~env = function
@@ -202,6 +209,7 @@ module Emitter_C = struct
     let emit_type ?(use_decls=use_decls) = emit_type ~use_decls in
     match t with
       | T.Void -> "void"
+      | T.Bool -> "int"
       | T.Int -> "int"
       | T.Float -> "float"
       | T.Struct s ->
@@ -211,6 +219,7 @@ module Emitter_C = struct
         if use_decls then type_decl t else t
       | T.Ptr t -> Printf.sprintf "%s*" (emit_type t)
       | T.Ident t -> t
+      | T.Arr _ -> assert false
 
   let tmp_var =
     let n = ref 0 in
@@ -218,50 +227,63 @@ module Emitter_C = struct
       incr n;
       Printf.sprintf "saml_tmp%d" !n
 
-  let rec emit_expr ~env e =
+  let rec emit_expr ?(return=fun s->s) ~env e =
     let decl x t = Printf.sprintf "%s %s;" (emit_type t) x in
+    let r f s = return (f s) in
     match e with
-      | Alloc t -> env, [Printf.sprintf "malloc(sizeof(%s));" (emit_type t)]
+      | Alloc t ->
+        env, [return (Printf.sprintf "malloc(sizeof(%s))" (emit_type t))]
       | Free p ->
-        let _, p = emit_prog ~env p in
-        let p = map_last (fun s -> Printf.sprintf "free(%s)" s) p in
+        let return = r (fun s -> Printf.sprintf "free(%s)" s) in
+        let _, p = emit_prog ~return ~env p in
         env, p
       | Let (x,p) ->
         let t = prog_type ~env p in
-        let _, p = emit_prog ~env p in
-        let p = prepend_last (x^" = ") p in
+        let return s = Printf.sprintf "%s %s = %s" (emit_type t) x s in
+        let _, p = emit_prog ~return ~env p in
         let env = Env.add_var env (x,t) in
-        env, (decl x t)::p
-      | Int n -> env, [Printf.sprintf "%d;" n]
-      | Float f ->  env, [Printf.sprintf "%f;" f]
-      | Ident x -> env, [Printf.sprintf "%s;" x]
+        env, p
+      | Int n ->
+        env, [return (Printf.sprintf "%d" n)]
+      | Float f ->
+        env, [return (Printf.sprintf "%f" f)]
+      | Ident x ->
+        env, [return (Printf.sprintf "%s" x)]
       | Address_of p ->
-        let _, p = emit_prog ~env p in
-        let p = prepend_last "&" p in
+        let return = r (fun s -> "&" ^ s) in
+        let _, p = emit_prog ~return ~env p in
         env, p
       | Load p ->
-        let _, p = emit_prog ~env p in
-        let p = map_last (fun s -> Printf.sprintf "(*%s)" s) p in
+        let return = r (fun s -> Printf.sprintf "(*%s)" s) in
+        let _, p = emit_prog ~return ~env p in
         env, p
       | Store ([Ident x], p) ->
-        let _, p = emit_prog ~env p in
-        let p = prepend_last (Printf.sprintf "*%s = " x) p in
+        let return = r (fun s -> Printf.sprintf "*%s = %s" x s) in
+        let _, p = emit_prog ~return ~env p in
         env, p
       | Store (x,p) ->
         let t = prog_type ~env x in
         let tmp = tmp_var () in
-        let _, x = emit_prog ~env x in
-        let x = prepend_last (tmp^" = ") x in
-        let _, p = emit_prog ~env p in
-        let p = prepend_last (Printf.sprintf "*%s = " tmp) p in
-        env, [decl tmp t]@x@p
-      | Field (r,x) ->
-        let _, p = emit_prog ~env r in
-        let p =
-          let f s = Printf.sprintf "%s.%s" s x in
-          map_last f p
-        in
+        let return = r (fun s -> Printf.sprintf "%s %s = %s" (emit_type t) tmp s) in
+        let _, x = emit_prog ~return ~env x in
+        let x = append_last ";" x in
+        let return = r (fun s -> Printf.sprintf "*%s = %s" tmp s) in
+        let _, p = emit_prog ~return ~env p in
+        env, x@p
+      | Field (rr,x) ->
+        let return = r (fun s -> Printf.sprintf "%s.%s" s x) in
+        let _, p = emit_prog ~return ~env rr in
         env, p
+      | If (p, p1, p2) ->
+        let tmp = tmp_var () in
+        let _, b =
+          let return s = Printf.sprintf "%s %s = %s" (emit_type T.Bool) tmp s in
+          emit_prog ~return ~env p
+        in
+        let b = append_last ";" b in
+        let _, p1 = emit_prog ~return ~env p1 in
+        let _, p2 = emit_prog ~return ~env p2 in
+        env, b@[Printf.sprintf "if (%s) {%s;} else {%s;}" tmp (String.concat " " p1) (String.concat " " p2)]
       | Op (op, args) ->
         let tmp_vars = ref [] in
         (* Precomputation of the arguments *)
@@ -270,12 +292,14 @@ module Emitter_C = struct
           Array.map
             (fun p ->
               let t = prog_type ~env p in
-              let p = snd (emit_prog ~env p) in
-              match p with
-                | [e] -> String.sub e 0 (String.length e - 1)
+              let _, p' = emit_prog ~env p in
+              match p' with
+                | [e] -> e
                 | _ ->
                   let tmp = tmp_var () in
-                  let p = prepend_last (tmp^" = ") p in
+                  let return s = Printf.sprintf "%s = %s" tmp s in
+                  let _, p = emit_prog ~return ~env p in
+                  let p = append_last ";" p in
                   tmp_vars := (tmp,t) :: !tmp_vars;
                   args_comp := !args_comp @ p;
                   tmp
@@ -283,25 +307,32 @@ module Emitter_C = struct
         in
         let p =
           match op with
-            | FAdd -> [Printf.sprintf "(%s + %s);" args.(0) args.(1)]
-            | FSub -> [Printf.sprintf "(%s - %s);" args.(0) args.(1)]
-            | FMul -> [Printf.sprintf "(%s * %s);" args.(0) args.(1)]
-            | FDiv -> [Printf.sprintf "(%s / %s);" args.(0) args.(1)]
+            | FAdd -> [return (Printf.sprintf "(%s + %s)" args.(0) args.(1))]
+            | FSub -> [return (Printf.sprintf "(%s - %s)" args.(0) args.(1))]
+            | FMul -> [return (Printf.sprintf "(%s * %s)" args.(0) args.(1))]
+            | FDiv -> [return (Printf.sprintf "(%s / %s)" args.(0) args.(1))]
+            | FLt -> [return (Printf.sprintf "(%s < %s)" args.(0) args.(1))]
             | Call f ->
               let args = Array.to_list args in
               let args = String.concat ", " args in
-              [Printf.sprintf "%s(%s);" f args]
+              [return (Printf.sprintf "%s(%s)" f args)]
         in
         let tmp_decl = List.map (fun (x,t) -> decl x t) !tmp_vars in
         env, tmp_decl @ !args_comp @ p
-      | Null _ -> env, ["NULL;"]
+      | Null _ ->
+        env, [return "NULL"]
 
-  and emit_prog ~env prog =
+  and emit_prog ?return ~env prog =
     match prog with
-      | [] -> env, []
+      | [] ->
+        env, []
       | e::ee ->
-        let env, e = emit_expr ~env e in
-        let env, ee = emit_prog ~env ee in
+        let env, e =
+          let return = if ee = [] then return else None in
+          emit_expr ?return ~env e
+        in
+        let e = if ee = [] then e else append_last ";" e in
+        let env, ee = emit_prog ?return ~env ee in
         env, e@ee
 
   let emit_decl ~env decl =
@@ -312,20 +343,22 @@ module Emitter_C = struct
         let env = Env.add_vars env args in
         let args = List.map (fun (x,t) -> Printf.sprintf "%s %s" (emit_type t) x) args in
         let args = String.concat ", " args in
-        let prog = snd (emit_prog ~env prog) in
-        let prog = if t = T.Void then prog@["return;"] else prepend_last "return " prog in
+        let return = if t = T.Void then (fun s -> s) else (fun s -> "return " ^ s) in
+        let prog = snd (emit_prog ~return ~env prog) in
         let prog = List.map (fun s -> "  " ^ s) prog in
         let prog = String.concat "\n" prog in
-        Printf.sprintf "%s %s(%s) {\n%s\n}" (emit_type t) name args prog
+        let prog = prog ^ ";" in
+        Printf.sprintf "inline %s %s(%s) {\n%s\n}" (emit_type t) name args prog
       | Decl_cst (x,e) ->
         let t = expr_type ~env e in
         let _, e = emit_expr ~env e in
+        let e = append_last ";" e in
         let e =
           match e with
             | [e] -> e
             | _ -> assert false
         in
-        Printf.sprintf "%s %s = %s" (emit_type t) x e
+        Printf.sprintf "%s %s = %s;" (emit_type t) x e
       | Decl_type (name, t) -> ignore (type_decl ~name (emit_type ~use_decls:false t)); ""
 
   let default_includes = ["stdlib.h"; "math.h"]

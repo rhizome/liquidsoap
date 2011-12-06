@@ -95,7 +95,7 @@ let register_builtins () =
       let oc = open_out (fname ^ ".c") in
       output_string oc v;
       close_out oc;
-      ignore (Sys.command (Printf.sprintf "gcc -fPIC -shared -Wall %s.c -o %s.so" fname fname));
+      ignore (Sys.command (Printf.sprintf "gcc -fPIC -O3 -shared -Wall %s.c -o %s.so" fname fname));
       Lang.unit
     );
   Saml_builtins.register ()
@@ -103,5 +103,6 @@ let register_builtins () =
 (** Enable SAML extensions. *)
 let enable () =
   assert (not !enabled);
+  V.default_typing_env := typing_env @ !V.default_typing_env;
   register_builtins ();
   enabled := true

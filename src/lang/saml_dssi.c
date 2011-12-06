@@ -143,6 +143,7 @@ static void SAML_run_synth(LADSPA_Handle instance, unsigned long sample_count, s
           if (events[event_pos].type == SND_SEQ_EVENT_NOTEON)
             {
               note = events[event_pos].data.note.note;
+              SAML_synth_reset(h->state[note]);
               SAML_synth_set_velocity(h->state[note], (float)events[event_pos].data.note.velocity / 127.0f);
               printf("note: %d\n", (int)note);
               SAML_synth_set_freq(h->state[note], 440. * pow(2.,(note - 69.)/12.));

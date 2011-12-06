@@ -201,11 +201,6 @@ let rec reduce tm =
   (* Printf.printf "reduce: %s\n%!" (V.print_term tm); *)
   let merge s1 s2 = s1@s2 in
   let mk tm' = { term = tm'; t = tm.t } in
-  let beta_reduce tm =
-    let r, tm = reduce tm in
-    assert (r = []);
-    tm
-  in
   match tm.term with
     | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> [], tm
     | Let l ->
@@ -306,15 +301,21 @@ let rec reduce tm =
               let args = List.map (fun (l,x,t,v) -> l,(x,t,v)) args in
               let args = ref args in
               let v = ref v in
-              List.iter
-                (fun (l,va) ->
-                  let x,_,_ = List.assoc l !args in
-                  args := List.remove_assoc l !args;
-                  v := subst x va !v
-                ) a;
+              let reduce_args a =
+                List.iter
+                  (fun (l,va) ->
+                    let x,_,_ = List.assoc l !args in
+                    args := List.remove_assoc l !args;
+                    v := subst x va !v
+                  ) a
+              in
+              reduce_args a;
               let args = List.map (fun (l,(x,t,v)) -> l,x,t,v) !args in
-              (* TODO: reduce optional arguments *)
               if args = [] then
+                beta_reduce !v
+              else if List.for_all (fun (_,_,_,v) -> v <> None) args then
+                let a = List.map (fun (l,_,_,v) -> l, Utils.get_some v) args in
+                reduce_args a;
                 beta_reduce !v
               else
                 mk (Fun (vars, args, !v))
@@ -326,6 +327,11 @@ let rec reduce tm =
         aux f
       in
       merge sf sa, tm
+
+and beta_reduce tm =
+  let r, tm = reduce tm in
+  assert (r = []);
+  tm
 
 let rec emit_type t =
   (* Printf.printf "emit_type: %s\n%!" (T.print t); *)
@@ -366,19 +372,31 @@ let rec emit_prog tm =
               let bpl = String.length builtin_prefix in
               String.sub x bpl (String.length x - bpl)
             in
-            let l = List.map (fun (l,v) -> assert (l = ""); emit_prog v) l in
-            let l = Array.of_list l in
-            let op =
+            (
               match x with
-                (* TODO: handle integer operations *)
-                | "add" -> B.FAdd
-                | "sub" -> B.FSub
-                | "mul" -> B.FMul
-                | "div" -> B.FDiv
-                | _ -> B.Call x
-            in
-            [B.Op (op, l)]
-          | _ -> assert false
+                | "if_then_else" ->
+                  let br v = beta_reduce (make_term (App (v, []))) in
+                  let p = List.assoc "" l in
+                  let p1 = br (List.assoc "then" l) in
+                  let p2 = br (List.assoc "else" l) in
+                  let p, p1, p2 = emit_prog p, emit_prog p1, emit_prog p2 in
+                  [ B.If (p, p1, p2)]
+                | _ ->
+                  let l = List.map (fun (l,v) -> assert (l = ""); emit_prog v) l in
+                  let l = Array.of_list l in
+                  let op =
+                    match x with
+                      (* TODO: handle integer operations *)
+                      | "add" -> B.FAdd
+                      | "sub" -> B.FSub
+                      | "mul" -> B.FMul
+                      | "div" -> B.FDiv
+                      | "lt" -> B.FLt
+                      | _ -> B.Call x
+                  in
+                  [B.Op (op, l)]
+            )
+          | _ -> Printf.printf "app: %s(...)" (print_term (make_term x)); assert false
       )
     | Field (r,x,_) ->
       (* Records are always passed by reference. *)
@@ -395,7 +413,7 @@ let rec emit_prog tm =
 
 (** Emit a prog which might start by decls (toplevel lets). *)
 let rec emit_decl_prog tm =
-  Printf.printf "emit_decl_prog: %s\n%!" (print_term tm);
+  (* Printf.printf "emit_decl_prog: %s\n%!" (print_term tm); *)
   match tm.term with
     | Let l when (match (T.deref l.def.t).T.descr with T.Arrow _ -> true | _ -> false) ->
       Printf.printf "def: %s : %s\n%!" (print_term l.def) (T.print l.def.t);

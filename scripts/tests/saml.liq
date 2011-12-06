@@ -16,6 +16,8 @@ end
 
 #saml.emit.generator.c(f ())
 
+#saml.emit.generator.c(now() + 1.)
+
 #saml.emit.generator.c(3. * now())
 
 def ff (y) =
@@ -23,19 +25,7 @@ def ff (y) =
     x := !x + 1.
     !x
 end
-#saml.emit.c.generator(f(3.))
-
-def voice (f) =
-    freq = ref(1.)
-    def set_freq (f) = freq := f end
-    velocity = ref (1.)
-    def set_velocity (v) = velocity := v end
-    [
-        set_freq = set_freq,
-        set_velocity = set_velocity,
-        main = !velocity * f (!freq)
-    ]
-end
+#saml.emit.generator.c(ff(3.))
 
 #saml.emit.generator.c(sin(440. * time.now()))
 
@@ -59,7 +49,8 @@ end
 
 def osc () =
     def f (freq) = sin(2. * pi * freq * now()) end
-    voice(f)
+    def f (freq) = env.adsr(f(freq)) end
+    gen.voice(f)
 end
 
 saml.emit.generator.dssi.c(osc())
