@@ -320,9 +320,14 @@ module Emitter_C = struct
             | FDiv -> [return (Printf.sprintf "(%s / %s)" args.(0) args.(1))]
             | FLt -> [return (Printf.sprintf "(%s < %s)" args.(0) args.(1))]
             | Call f ->
-              let args = Array.to_list args in
-              let args = String.concat ", " args in
-              [return (Printf.sprintf "%s(%s)" f args)]
+              (
+                match f with
+                  | "print_int" -> [return (Printf.sprintf "printf(\"%%d\",%s)" args.(0))]
+                  | _ ->
+                    let args = Array.to_list args in
+                    let args = String.concat ", " args in
+                    [return (Printf.sprintf "%s(%s)" f args)]
+              )
         in
         let tmp_decl = List.map (fun (x,t) -> decl x t) !tmp_vars in
         env, tmp_decl @ !args_comp @ p
@@ -368,7 +373,7 @@ module Emitter_C = struct
         Printf.sprintf "%s %s = %s;" (emit_type t) x e
       | Decl_type (name, t) -> ignore (type_decl ~name (emit_type ~use_decls:false t)); ""
 
-  let default_includes = ["stdlib.h"; "math.h"]
+  let default_includes = ["stdlib.h"; "math.h"; "stdio.h"]
 
   (** Emit a list of includes. *)
   let emit_includes includes =

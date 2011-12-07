@@ -40,6 +40,10 @@ let ref_t ~pos ~level t =
   T.make ~pos ~level
     (T.Constr { T.name = "ref" ; T.params = [T.Invariant,t] })
 
+let event_t ~pos ~level t =
+  T.make ~pos ~level
+    (T.Constr { T.name = "event" ; T.params = [T.Invariant,t] })
+
 let zero_t = T.make T.Zero
 let succ_t t = T.make (T.Succ t)
 let variable_t = T.make T.Variable
@@ -155,15 +159,19 @@ and in_term =
   | Var     of string
   | Seq     of term * term
   | App     of term * (string * term) list
+  (* [fun ~l1:x1 .. ?li:(xi=defi) .. -> body] = [Fun (V,
+   * [(l1,x1,None)..(li,xi,Some defi)..], body)] The first component [V] is the
+   * list containing all variables occurring in the function. It is used to
+   * restrict the environment captured when a closure is formed. *)
   | Fun     of Vars.t *
       (string*string*T.t*term option) list *
       term
-(* [fun ~l1:x1 .. ?li:(xi=defi) .. -> body] =
- * [Fun (V, [(l1,x1,None)..(li,xi,Some defi)..], body)]
- * The first component [V] is the list containing all
- * variables occurring in the function. It is used to
- * restrict the environment captured when a closure is
- * formed. *)
+  (** A channel, with a list of initial handlers. *)
+  | Event_channel of term list
+  (** Function to handle events. *)
+  | Event_handle of term * term
+  (** Emit an event with data. *)
+  | Event_emit of term * term
 
 (* Only used for printing very simple functions. *)
 let rec is_ground x = match x.term with
@@ -221,6 +229,9 @@ let rec print_term v = match v.term with
   | Open (r, v) -> Printf.sprintf "open(%s); %s" (print_term r) (print_term v)
   | Let l -> Printf.sprintf "%s = (%s) %s" l.var (print_term l.def) (print_term l.body)
   | Is_field _ -> assert false
+  | Event_channel _ -> "channel()"
+  | Event_handle (c,f) -> Printf.sprintf "handle(%s,%s)" (print_term c) (print_term f)
+  | Event_emit (c,v) -> Printf.sprintf "emit(%s,%s)" (print_term c) (print_term v)
 
 let rec free_vars tm = match tm.term with
   | Unit | Bool _ | Int _ | String _ | Float _ | Encoder _ ->
@@ -254,6 +265,9 @@ let rec free_vars tm = match tm.term with
       Vars.union
         (free_vars l.def)
         (Vars.remove l.var (free_vars l.body))
+  | Event_channel l -> List.fold_left Vars.union Vars.empty (List.map free_vars l)
+  | Event_handle (c,f) -> Vars.union (free_vars c) (free_vars f)
+  | Event_emit (c,v) -> Vars.union (free_vars c) (free_vars v)
 
 let free_vars ?bound body =
   match bound with
@@ -351,6 +365,11 @@ let rec check_unused ~lib tm =
                   raise (Unused_variable (s,start_pos))
           end ;
           if mask then Vars.add s v else v
+    | Event_channel l ->
+      List.fold_left check v l
+    | Event_handle (c,e) | Event_emit (c,e) ->
+      let v = check v c in
+      check v e
   in
     (* Unused free variables may remain *)
     ignore (check ~toplevel:true Vars.empty tm)
@@ -413,6 +432,12 @@ let rec map_types f (gen:'a list) tm = match tm.term with
         { t = f gen tm.t ;
           term = Let { l with def = map_types f gen' l.def ;
                               body = map_types f gen l.body } }
+  | Event_channel l ->
+    { t = f gen tm.t ; term = Event_channel (List.map (map_types f gen) l) }
+  | Event_handle (c,e) ->
+    { t = f gen tm.t ; term = Event_handle (map_types f gen c, map_types f gen e) }
+  | Event_emit (c,e) ->
+    { t = f gen tm.t ; term = Event_emit (map_types f gen c, map_types f gen e) }
 
 (** Folds [f] over almost all types occurring in a term,
   * skipping as much as possible while still
@@ -460,6 +485,11 @@ let rec fold_types f gen x tm = match tm.term with
   | Let {gen=gen';def=def;body=body} ->
       let x = fold_types f (gen'@gen) x def in
         fold_types f gen x body
+  | Event_channel l ->
+    List.fold_left (fold_types f gen) x l
+  | Event_handle (c,e) | Event_emit (c,e) ->
+    let x = fold_types f gen x c in
+    fold_types f gen x e
 
 (** Values are normal forms of terms. *)
 module V =
@@ -490,6 +520,9 @@ struct
     | FFI     of ffi
     (** A quoted term. Only used for compiling SAML code. *)
     | Quote   of (string * term) list * env * term
+    | Event_channel of value list
+    | Event_handle of value * value
+    | Event_emit of value * value
   and ffi =
       {
         (** Arguments of the foreign function. *)
@@ -547,6 +580,9 @@ struct
       Printf.sprintf "fun (%s) -> %s" (String.concat "," args) (print_term x)
     | Fun _ | FFI _ -> "<fun>"
     | Quote _ -> "<term>"
+    | Event_channel _ -> "<channel>"
+    | Event_handle (c,f) -> Printf.sprintf "event.handle(%s,%s)" (print_value c) (print_value f)
+    | Event_emit (c,e) -> Printf.sprintf "event.emit(%s,%s)" (print_value c) (print_value e)
 
   let map_env f env = List.map (fun (s,(g,v)) -> s, (g, f v)) env
 
@@ -615,6 +651,12 @@ struct
         assert (f gen v.t = v.t) ;
         r := map_types f gen !r ;
         v
+    | Event_channel l ->
+      { t = f gen v.t ; value = Event_channel (List.map (map_types f gen) l) }
+    | Event_handle (c,e) ->
+      { t = f gen v.t ; value = Event_handle (map_types f gen c, map_types f gen e) }
+    | Event_emit (c,e) ->
+      { t = f gen v.t ; value = Event_emit (map_types f gen c, map_types f gen e) }
 end
 
 (** {1 Built-in values and toplevel definitions} *)
@@ -921,6 +963,20 @@ let rec check ?(print_toplevel=false) ~level ~env e =
                T.pp_scheme scheme)) ;
         check ~print_toplevel ~level:(level+1) ~env body ;
         e.t >: body.t
+  | Event_channel l ->
+    let v = T.fresh_evar ~level ~pos in
+    List.iter (fun f -> f.t <: mk (T.Arrow ([false,"",v], mkg T.Unit))) l;
+    e.t >: event_t ~pos ~level v
+  | Event_handle (c,f) ->
+    let v = T.fresh_evar ~level ~pos in
+    c.t <: event_t ~pos ~level v;
+    f.t <: mk (T.Arrow ([false,"",v], mkg T.Unit));
+    e.t >: mkg T.Unit
+  | Event_emit (c,x) ->
+    let v = T.fresh_evar ~level ~pos in
+    c.t <: event_t ~pos ~level v;
+    x.t <: v;
+    e.t >: mkg T.Unit
 
 let default_typing_env = ref []
 
@@ -1138,6 +1194,11 @@ let rec eval ~env tm =
                  else
                    eval ~env t
                ) l)
+      | Event_channel l ->
+        let l = List.map (eval ~env) l in
+        mk (V.Event_channel l)
+      (* TODO? *)
+      | Event_handle _ | Event_emit _ -> mk V.Unit
 
 and apply ~t f l =
   let mk v = { V.t = t ; V.value = v } in

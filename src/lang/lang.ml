@@ -55,6 +55,8 @@ let of_record_t t = match (T.deref t).T.descr with
 
 let metadata_t = list_t (product_t string_t string_t)
 
+let event_t t = T.make (T.Constr { T.name = "event" ; T.params = [T.Invariant,t] })
+
 let zero_t = Term.zero_t
 let succ_t t = Term.succ_t t
 let variable_t = Term.variable_t
@@ -529,6 +531,9 @@ let iter_sources f v =
         List.iter (fun (_,_,_,v) -> match v with
                      | Some v -> iter_term env v
                      | None -> ()) proto
+    | Term.Event_channel l -> List.iter (iter_term env) l
+    | Term.Event_handle (c,e) | Term.Event_emit (c,e) ->
+      iter_term env c; iter_term env e
   and iter_value v = match v.value with
     | Source s -> f s
     | Unit | Bool _ | Int _ | Float _ | String _ | Request _ | Encoder _ | Quote _ -> ()
@@ -555,6 +560,8 @@ let iter_sources f v =
              | _,_,Some v -> iter_value v
              | _ -> ())
           ffi.ffi_args
+    | Event_channel l -> List.iter iter_value l
+    | Event_handle (c,e) | Event_emit (c,e) -> iter_value c; iter_value e
   in
     iter_value v
 

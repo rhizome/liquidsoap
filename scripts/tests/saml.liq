@@ -53,6 +53,16 @@ def osc () =
     gen.voice(f)
 end
 
-saml.emit.generator.dssi.c(osc())
+#saml.emit.generator.dssi.c(osc())
 
 #saml.emit.generator.c(osc().main)
+
+def fff () =
+    saml.print.int(4)
+    c = event.channel()
+    event.handle(c, saml.print.int)
+    event.emit(c, 5)
+    3.
+end
+
+saml.emit.generator.c(fff())
