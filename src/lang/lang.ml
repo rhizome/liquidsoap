@@ -346,7 +346,7 @@ let register_builtin ~doc name v =
           let r = 
             match cur.value with
               | Record r -> r
-              | _        -> assert false
+              | _        -> Printf.printf "Builtin %s is registered twice!\n%!" name; assert false
           in
           let t =
             match cur.t.T.descr with

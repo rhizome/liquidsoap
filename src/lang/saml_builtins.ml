@@ -13,11 +13,11 @@ let register_math () =
         | _ -> assert false)
 
 let register_event () =
-  add_builtin "event.channel" ~cat:Control ~descr:"Create an event channel."
+  Lang.add_builtin "event.channel" ~category:(string_of_category Control)
+    ~descr:"Create an event channel."
     ~extern:"event_channel"
     [] (Lang.event_t (Lang.univ_t 1))
-    (fun p ->
-      let t = Lang.event_t (T.fresh_evar ~level:(-1) ~pos:None) in
+    (fun p t ->
       { Lang.t = t; value = Lang.Event_channel [] }
     );
   add_builtin "event.handle" ~cat:Control ~descr:"Handle an event on a channel."
@@ -44,7 +44,7 @@ let register_event () =
     )
 
 let register_other () =
-  add_builtin "saml.print.int" ~cat:Control ~descr:"Print an integer." ~extern:"print_int"
+  add_builtin "print_int" ~cat:Control ~descr:"Print an integer." ~extern:"print_int"
     ["", Lang.int_t, None, None] Lang.unit_t
     (fun p ->
       let n = Lang.to_int (List.assoc "" p) in
@@ -53,6 +53,7 @@ let register_other () =
     )
 
 let register () =
+  Printf.printf "Registered SAML builtins.\n%!";
   register_math ();
   register_event ();
   register_other ()

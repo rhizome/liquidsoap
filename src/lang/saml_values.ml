@@ -185,8 +185,9 @@ let rec term_of_value v =
               try
                 ans := T.Fields.add x { V.rgen = v.V.V.v_gen; V.rval = term_of_value v.V.V.v_value } !ans
               with
+                | Failure _ -> ()
                 | e ->
-                  (* Printf.printf "term_of_value: ignoring %s = %s (%s).\n" x (V.V.print_value v.V.V.v_value) (Printexc.to_string e); *)
+                  Printf.printf "term_of_value: ignoring %s = %s (%s).\n" x (V.V.print_value v.V.V.v_value) (Printexc.to_string e);
                   ()
             ) r;
           !ans
@@ -232,6 +233,8 @@ let rec term_of_value v =
         (* TODO: fill vars? *)
         Fun (V.Vars.empty, params, t)
       | V.V.Float f -> Float f
+      | V.V.Bool b -> Bool b
+      | V.V.String s -> String s
       | V.V.Event_channel l -> Event_channel (List.map term_of_value l)
   in
   make_term term
@@ -245,9 +248,9 @@ type state =
 let empty_state = { refs = [] ; events = [] }
 
 (* Notice that it is important to mk at the end in order to preserve types. *)
-let rec reduce ?(state_refs=false) ?(state_events=false) tm =
+let rec reduce ?(env=[]) ?(state_refs=false) ?(state_events=false) tm =
   (* Printf.printf "reduce: %s\n%!" (V.print_term tm); *)
-  let reduce ?(state_refs=state_refs) ?(state_events=state_events) = reduce ~state_refs ~state_events in
+  let reduce ?(env=env) ?(state_refs=state_refs) ?(state_events=state_events) = reduce ~env ~state_refs ~state_events in
   let merge s1 s2 =
     let events =
       let l1 = List.map fst s1.events in
@@ -291,9 +294,10 @@ let rec reduce ?(state_refs=false) ?(state_events=false) tm =
           let sbody, body = reduce body in
           merge sdef sbody, body.term
         else
+          let var, body = fresh_let env l in
           let sdef, def = reduce l.def in
-          let sbody, body = reduce l.body in
-          let l = { l with def = def; body = body } in
+          let sbody, body = reduce ~env:(var::env) body in
+          let l = { l with var = var; def = def; body = body } in
           merge sdef sbody, Let l
       | Ref v ->
         let sv, v = reduce v in
@@ -348,7 +352,7 @@ let rec reduce ?(state_refs=false) ?(state_events=false) tm =
           match r.term with
             | Record r ->
               (* TODO: use o *)
-              let s, v = reduce (T.Fields.find x r).rval in
+              let s, v = reduce (try T.Fields.find x r with Not_found -> failwith (Printf.sprintf "Field %s not found" x)).rval in
               sr := merge s !sr;
               v
             | Let l ->
@@ -358,7 +362,8 @@ let rec reduce ?(state_refs=false) ?(state_events=false) tm =
         in
         !sr, (aux r).term
       | Fun (vars, args, v) ->
-        let sv, v = reduce v in
+        let env = (List.map (fun (_,x,_,_) -> x) args)@env in
+        let sv, v = reduce ~env v in
         sv, Fun (vars, args, v)
       | App (f,a) ->
         let sf, f = reduce f in

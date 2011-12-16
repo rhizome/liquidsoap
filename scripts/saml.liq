@@ -1,10 +1,14 @@
 math.pi = 3.14159265358979323846
 
+#saml = [=]
+
+event_dummy = event.channel()
+
 # Time
 
 saml.time = [=]
 
-def saml.time.integrator (x) =
+def saml.time.integrator (~periodic=false,x) =
     y = ref 0.
     ans = !y
     y := !y + x * period
@@ -50,17 +54,17 @@ def saml.gen.voice (f) =
     ]
 end
 
-# Enveloppes
+# Envelopes
 
 saml.env = [=]
 
-def saml.env.adsr (~a=0.05,~d=0.02,~s=0.8,~r=0.5,x) =
+def saml.env.adsr (~a=0.05,~d=0.02,~s=0.8,~r=0.5) =
     t = saml.time.now()
     if t < a then
-        x * t / a
+        t / a
     else if t < d then
-        x * (1. - (t - a) / d * (1. - s))
+        (1. - (t - a) / d * (1. - s))
     else
-        x * s
+        s
     end end
 end

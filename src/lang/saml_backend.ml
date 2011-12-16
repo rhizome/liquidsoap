@@ -102,13 +102,13 @@ let rec print_expr = function
 
 and print_prog p =
   let p = List.map print_expr p in
-  String.concat "; " p
+  String.concat ";\n" p
 
 let print_decl = function
   | Decl ((name, args, t), p) ->
     let args = List.map (fun (x,t) -> Printf.sprintf "%s : %s" x (T.print t)) args in
     let args = String.concat ", " args in
-    Printf.sprintf "decl %s(%s) : %s = %s" name args (T.print t) (print_prog p)
+    Printf.sprintf "decl %s(%s) : %s =\n%s" name args (T.print t) (print_prog p)
   | Decl_cst (name, e) ->
     Printf.sprintf "decl %s = %s" name (print_expr e)
   | Decl_type (tn, t) ->
@@ -357,7 +357,7 @@ module Emitter_C = struct
         let args = String.concat ", " args in
         let return = if t = T.Void then (fun s -> s) else (fun s -> "return " ^ s) in
         let prog = snd (emit_prog ~return ~env prog) in
-        let prog = List.map (fun s -> "  " ^ s) prog in
+        (* let prog = List.map (fun s -> "  " ^ s) prog in *)
         let prog = String.concat "\n" prog in
         let prog = prog ^ ";" in
         Printf.sprintf "inline %s %s(%s) {\n%s\n}" (emit_type t) name args prog

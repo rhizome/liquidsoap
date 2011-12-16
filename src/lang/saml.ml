@@ -103,7 +103,7 @@ let register_builtins () =
         let prog =
           SV.make_let
             (name^"_activate")
-            (SV.make_field ~t:(zarr Lang.bool_t) (SV.make_var synth) "activate")
+            (SV.make_field ~t:(zarr Lang.unit_t) (SV.make_var synth) "activate")
             prog
         in
         SV.make_let synth v prog
