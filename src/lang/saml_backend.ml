@@ -125,6 +125,8 @@ module Emitter_C = struct
         {
           vars : (string * T.t) list;
           ops : (op * (T.t list * T.t)) list;
+          (* Variables to be renamed during emission. *)
+          renamings : (string * string) list;
         }
 
     (* TODO: implement this in a functional way *)
@@ -142,7 +144,8 @@ module Emitter_C = struct
       let ff_f = [T.Float; T.Float], T.Float in
       {
         vars = vars;
-        ops = [ FAdd, ff_f; FSub, ff_f; FMul, ff_f; FDiv, ff_f; FLt, ff_f; Call "sin", f_f ]
+        ops = [ FAdd, ff_f; FSub, ff_f; FMul, ff_f; FDiv, ff_f; FLt, ff_f; Call "sin", f_f ];
+        renamings = [];
       }
   end
 
@@ -233,8 +236,15 @@ module Emitter_C = struct
       Printf.sprintf "saml_tmp%d" !n
 
   let rec emit_expr ?(return=fun s->s) ~env e =
+    (* Printf.printf "emit_expr: %s\n%!" (print_expr e); *)
     let decl x t = Printf.sprintf "%s %s;" (emit_type t) x in
     let r f s = return (f s) in
+    let ident x =
+      try
+        List.assoc x env.Env.renamings
+      with
+        | Not_found -> x
+    in
     match e with
       | Alloc t ->
         env, [return (Printf.sprintf "malloc(sizeof(%s))" (emit_type t))]
@@ -243,9 +253,24 @@ module Emitter_C = struct
         let _, p = emit_prog ~return ~env p in
         env, p
       | Let (x,p) ->
+        let env, x =
+          (* In C a variable cannot be masked, so we have to rename
+             variables. *)
+          if List.mem_assoc x env.Env.vars then
+            let n = ref 1 in
+            let x' () = Printf.sprintf "%s%d" x !n in
+            while List.mem_assoc (x'()) env.Env.vars do
+              incr n
+            done;
+            let x' = x' () in
+            let env = { env with Env.renamings = (x,x')::env.Env.renamings } in
+            env, x'
+          else
+            env, x
+        in
         let t = prog_type ~env p in
         let return s = Printf.sprintf "%s %s = %s" (emit_type t) x s in
-        let _, p = emit_prog ~return ~env p in
+        let env, p = emit_prog ~return ~env p in
         let env = Env.add_var env (x,t) in
         env, p
       | Int n ->
@@ -255,6 +280,7 @@ module Emitter_C = struct
       | Bool b ->
         env, [return (if b then "1" else "0")]
       | Ident x ->
+        let x = ident x in
         env, [return (Printf.sprintf "%s" x)]
       | Address_of p ->
         let return = r (fun s -> "&" ^ s) in
@@ -265,6 +291,7 @@ module Emitter_C = struct
         let _, p = emit_prog ~return ~env p in
         env, p
       | Store ([Ident x], p) ->
+        let x = ident x in
         let return = r (fun s -> Printf.sprintf "*%s = %s" x s) in
         let _, p = emit_prog ~return ~env p in
         env, p
@@ -295,22 +322,27 @@ module Emitter_C = struct
         let tmp_vars = ref [] in
         (* Precomputation of the arguments *)
         let args_comp = ref [] in
-        let args =
-          Array.map
-            (fun p ->
-              let t = prog_type ~env p in
-              let _, p' = emit_prog ~env p in
-              match p' with
-                | [e] -> e
-                | _ ->
-                  let tmp = tmp_var () in
-                  let return s = Printf.sprintf "%s = %s" tmp s in
-                  let _, p = emit_prog ~return ~env p in
-                  let p = append_last ";" p in
-                  tmp_vars := (tmp,t) :: !tmp_vars;
-                  args_comp := !args_comp @ p;
-                  tmp
-            ) args
+        let env, args =
+          let env = ref env in
+          let args =
+            Array.map
+              (fun p ->
+                let t = prog_type ~env:!env p in
+                let env', p' = emit_prog ~env:!env p in
+                match p' with
+                  | [e] -> env := env'; e
+                  | _ ->
+                    let tmp = tmp_var () in
+                    let return s = Printf.sprintf "%s = %s" tmp s in
+                    let env', p = emit_prog ~return ~env:!env p in
+                    let p = append_last ";" p in
+                    env := env';
+                    tmp_vars := (tmp,t) :: !tmp_vars;
+                    args_comp := !args_comp @ p;
+                    tmp
+              ) args
+          in
+          !env, args
         in
         let p =
           match op with
@@ -318,6 +350,7 @@ module Emitter_C = struct
             | FSub -> [return (Printf.sprintf "(%s - %s)" args.(0) args.(1))]
             | FMul -> [return (Printf.sprintf "(%s * %s)" args.(0) args.(1))]
             | FDiv -> [return (Printf.sprintf "(%s / %s)" args.(0) args.(1))]
+            | FRem -> [return (Printf.sprintf "remainder(%s, %s)" args.(0) args.(1))]
             | FLt -> [return (Printf.sprintf "(%s < %s)" args.(0) args.(1))]
             | Call f ->
               (

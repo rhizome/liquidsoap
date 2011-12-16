@@ -23,6 +23,8 @@ end
 
 #saml.emit.generator.c(3. * now())
 
+#saml.emit.generator.c(now() * now())
+
 def f (y) =
     x = ref (5.)
     x := !x + 1.
@@ -57,8 +59,8 @@ end
 
 def osc () =
     def f (freq) = sin(2. * pi * freq * now()) end
-#    def f (freq) = (if true then 1. else 0. end) * f(freq) end
-    def f (freq) = env.adsr() * f(freq) end
+#    def f (freq) = now () * f(freq) end
+    def f (freq) = env.adsr(a=0.5) * f(freq) end
     gen.voice(f)
 end
 
