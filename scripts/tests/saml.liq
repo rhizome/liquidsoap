@@ -17,6 +17,8 @@ def f () =
     3. + !r
 end
 
+#saml.emit.generator.c(5.)
+
 #saml.emit.generator.c(f ())
 
 #saml.emit.generator.c(now() + 1.)

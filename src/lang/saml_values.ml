@@ -149,7 +149,7 @@ and substs ss tm =
           List.map
             (fun (l,x,t,v) ->
               let x' = if List.mem x (fv !ss) then fresh_var () else x in
-              ss := List.remove_all_assoc l !ss;
+              ss := List.remove_all_assoc x !ss;
               sp := (x, make_term (Var x')) :: !sp;
               l,x',t,Utils.may s v
             ) p
@@ -242,15 +242,17 @@ let rec term_of_value v =
 type state =
     {
       refs : (string * term) list;
-      events : (string * (term list)) list
+      events : (string * (term list)) list;
+      bound_vars : string list;
     }
 
-let empty_state = { refs = [] ; events = [] }
+let empty_state = { refs = [] ; events = [] ; bound_vars = [] }
 
 (* Notice that it is important to mk at the end in order to preserve types. *)
-let rec reduce ?(env=[]) ?(state_refs=false) ?(state_events=false) tm =
+let rec reduce ?(state=empty_state) tm =
   (* Printf.printf "reduce: %s\n%!" (V.print_term tm); *)
-  let reduce ?(env=env) ?(state_refs=state_refs) ?(state_events=state_events) = reduce ~env ~state_refs ~state_events in
+  let reduce ~state = reduce ~state in
+  (*
   let merge s1 s2 =
     let events =
       let l1 = List.map fst s1.events in
@@ -270,52 +272,51 @@ let rec reduce ?(env=[]) ?(state_refs=false) ?(state_events=false) tm =
       events = events;
     }
   in
-  let mk ?(t=tm.t) = make_term ~t in
-  let reduce_list l =
-    let st = ref empty_state in
-    let l = List.map (fun v -> let s, v = reduce v in st := merge !st s; v) l in
-    !st, l
+  *)
+  let reduce_list ~state l =
+    let state = ref state in
+    let l = List.map (fun v -> let s, v = reduce ~state:!state v in state := s; v) l in
+    !state, l
   in
+  let mk ?(t=tm.t) = make_term ~t in
   let s, term =
     match tm.term with
-      | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> empty_state, tm.term
+      | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> state, tm.term
       | Let l ->
         if
           (
             (match (T.deref l.def.t).T.descr with
               | T.Arrow _ | T.Record _ -> true
-              | T.Constr { T.name = "event" } -> state_events
               | _ -> false
             ) || occurences l.var l.body <= 1
           ) && not (List.mem l.var !meta_vars)
         then
-          let sdef, def = reduce l.def in
+          let state, def = reduce ~state l.def in
           let body = subst l.var def l.body in
-          let sbody, body = reduce body in
-          merge sdef sbody, body.term
+          let state, body = reduce ~state body in
+          state, body.term
         else
-          let var, body = fresh_let env l in
-          let sdef, def = reduce l.def in
-          let sbody, body = reduce ~env:(var::env) body in
+          let var, body = fresh_let state.bound_vars l in
+          let state, def = reduce ~state l.def in
+          let state = { state with bound_vars = var::state.bound_vars } in
+          let state, body = reduce ~state body in
           let l = { l with var = var; def = def; body = body } in
-          merge sdef sbody, Let l
+          state, Let l
       | Ref v ->
-        let sv, v = reduce v in
-        if state_refs then
-          let x = fresh_ref () in
-          merge { empty_state with refs = [x,v] } sv, Var x
-        else
-          sv, Ref v
+        let state, v = reduce ~state v in
+        let x = fresh_ref () in
+        let state = { state with refs = (x,v)::state.refs} in
+        state, Var x
       | Get r ->
-        let sr, r = reduce r in
-        sr, Get r
+        let state, r = reduce ~state r in
+        state, Get r
       | Set (r,v) ->
-        let sr, r = reduce r in
-        let sv, v = reduce v in
-        merge sr sv, Set (r, v)
+        let state, r = reduce ~state r in
+        let state, v = reduce ~state v in
+        state, Set (r, v)
       | Seq (a, b) ->
-        let sa, a = reduce a in
-        let sb, b = reduce b in
+        let state, a = reduce ~state a in
+        let state, b = reduce ~state b in
         let tm =
           let rec aux a =
             match a.term with
@@ -327,11 +328,11 @@ let rec reduce ?(env=[]) ?(state_refs=false) ?(state_events=false) tm =
           in
           (aux a).term
         in
-        merge sa sb, tm
+        state, tm
       | Record r ->
         (* Records get lazily evaluated in order not to generate variables for
            the whole standard library. *)
-        empty_state, tm.term
+        state, tm.term
       (*
         let sr = ref [] in
         let r =
@@ -345,40 +346,40 @@ let rec reduce ?(env=[]) ?(state_refs=false) ?(state_events=false) tm =
         !sr, Record r
       *)
       | Field (r,x,o) ->
-        let sr, r = reduce r in
-        let sr = ref sr in
-        let rec aux r =
+        let state, r = reduce ~state r in
+        let rec aux state r =
           (* Printf.printf "aux field (%s): %s\n%!" x (print_term r); *)
           match r.term with
             | Record r ->
               (* TODO: use o *)
-              let s, v = reduce (try T.Fields.find x r with Not_found -> failwith (Printf.sprintf "Field %s not found" x)).rval in
-              sr := merge s !sr;
-              v
+              reduce ~state (try T.Fields.find x r with Not_found -> failwith (Printf.sprintf "Field %s not found" x)).rval
             | Let l ->
               let fv = match o with Some o -> free_vars o | None -> [] in
               let var, body = fresh_let fv l in
-              mk (Let { l with var = var ; body = aux body })
+              let state, body = aux state body in
+              state, mk (Let { l with var = var ; body = body })
         in
-        !sr, (aux r).term
+        let state, f = aux state r in
+        state, f.term
       | Fun (vars, args, v) ->
-        let env = (List.map (fun (_,x,_,_) -> x) args)@env in
-        let sv, v = reduce ~env v in
-        sv, Fun (vars, args, v)
+        let bound_vars = (List.map (fun (_,x,_,_) -> x) args)@state.bound_vars in
+        let state = { state with bound_vars = bound_vars } in
+        let state, v = reduce ~state v in
+        state, Fun (vars, args, v)
       | App (f,a) ->
-        let sf, f = reduce f in
-        let sa, a =
-          let sa = ref empty_state in
+        let state, f = reduce ~state f in
+        let state, a =
+          let state = ref state in
           let ans = ref [] in
           List.iter
             (fun (l,v) ->
-              let sv, v = reduce v in
-              sa := merge !sa sv;
+              let s, v = reduce ~state:!state v in
+              state := s;
               ans := (l,v) :: !ans
             ) a;
-          !sa, List.rev !ans
+          !state, List.rev !ans
         in
-        let rec aux f =
+        let rec aux state f =
           (* Printf.printf "aux app: %s\n%!" (print_term f); *)
           match f.term with
             | Fun (vars, args, v) ->
@@ -396,64 +397,70 @@ let rec reduce ?(env=[]) ?(state_refs=false) ?(state_events=false) tm =
               reduce_args a;
               let args = List.map (fun (l,(x,t,v)) -> l,x,t,v) !args in
               if args = [] then
-                beta_reduce !v
+                state, beta_reduce !v
               else if List.for_all (fun (_,_,_,v) -> v <> None) args then
                 let a = List.map (fun (l,_,_,v) -> l, Utils.get_some v) args in
                 reduce_args a;
-                beta_reduce !v
+                state, beta_reduce !v
               else
-                mk (Fun (vars, args, !v))
+                state, mk (Fun (vars, args, !v))
             | Let l ->
               let fv = List.fold_left (fun fv (_,v) -> (free_vars v)@fv) [] a in
               let var, body = fresh_let fv l in
-              mk (Let { l with var = var ; body = aux body })
+              let state, body = aux state body in
+              state, mk (Let { l with var = var ; body = body })
             | Var _ ->
-              mk (App (f, a))
+              state, mk (App (f, a))
         in
-        merge sf sa, (aux f).term
+        let state, v = aux state f in
+        state, v.term
       | Event_channel l ->
-        let s, l = reduce_list l in
-        if state_events then
-          let c = fresh_event () in
-          merge { empty_state with events = [c,l] } s, Var c
-        else
-          s, Event_channel l
+        let state, l = reduce_list ~state l in
+        let c = fresh_event () in
+        let state = { state with events = (c,l)::state.events } in
+        state, Var c
       | Event_handle (c,h) ->
-        let s, c = reduce c in
-        let s',h = reduce h in
-        let s = merge s s' in
-        let rec aux c =
+        let state, c = reduce ~state c in
+        let state, h = reduce ~state h in
+        let rec aux state c =
           (* Printf.printf "event_handle aux: %s\n%!" (print_term c); *)
           match c.term with
             | Var x ->
-              if state_events then
-                merge { empty_state with events = [x,[h]] } s, mk Unit
+              if List.mem_assoc x state.events then
+                let events = state.events in
+                let hh = try List.assoc x events with Not_found -> [] in
+                let events = List.remove_assoc x events in
+                let events = (x,h::hh)::events in
+                let state = { state with events = events } in
+                state, mk Unit
               else
-                s, mk (Event_handle (c,h))
+                state, mk (Event_handle (c,h))
             | Event_channel _ ->
-              s, mk Unit
+              state, mk Unit
         in
-        let s, t = aux c in
-        s, t.term
+        let state, t = aux state c in
+        state, t.term
       | Event_emit (c,v) ->
-        let s, c = reduce c in
-        let s',v = reduce v in
-        let rec aux c =
+        let state, c = reduce ~state c in
+        let state, v = reduce ~state v in
+        let rec aux state c =
           match c.term with
             | Var _ ->
-              mk (Event_emit (c, v))
+              state, mk (Event_emit (c, v))
             | Event_channel l ->
               let l = List.map (fun f -> mk (App(f,["",v]))) l in
               let f = List.fold_left (fun s f -> mk (Seq (s,f))) (mk Unit) l in
-              beta_reduce f
+              state, beta_reduce f
         in
-        merge s s', (aux c).term
+        let state, c = aux state c in
+        state, c.term
   in
   s, { term = term ; t = tm.t }
 
 and beta_reduce tm =
-  let r, tm = reduce tm in
-  assert (r = empty_state);
+  (* Printf.printf "beta_reduce: %s\n%!" (print_term tm); *)
+  let s, tm = reduce tm in
+  assert (s.refs = [] && s.events = []);
   tm
 
 let rec emit_type t =
@@ -593,22 +600,21 @@ let emit name ?(keep_let=[]) ~env ~venv tm =
   (* Printf.printf "env: %s\n%!" (String.concat " " (List.map fst env)); *)
   let prog = substs env tm in
   Printf.printf "closed term: %s\n\n%!" (V.print_term prog);
-  (* Reduce the term and compute the references. *)
-  let state, prog = reduce ~state_refs:true prog in
-  let refs = state.refs in
+  (* Reduce the term and compute references and events. *)
+  let state, prog = reduce prog in
   Printf.printf "reduced: %s\n\n%!" (V.print_term prog);
-  (* Reduce the events. *)
-  let state, prog = reduce ~state_events:true prog in
-  Printf.printf "removed events: %s\n\n%!" (V.print_term prog);
+  (*
   let prog =
     let e = List.map (fun (x,h) -> x, make_term (Event_channel h)) state.events in
     (* List.iter (fun (x,_) -> Printf.printf "subst event %s\n%!" x) e; *)
     let prog = substs e prog in
     beta_reduce prog
   in
+  *)
   Printf.printf "evented: %s\n\n%!" (V.print_term prog);
 
   (* Compute the state. *)
+  let refs = state.refs in
   let refs_t = List.map (fun (x,v) -> x, emit_type v.V.t) refs in
   let refs = List.map (fun (x,v) -> x, emit_prog v) refs in
   let state_t = B.T.Struct refs_t in

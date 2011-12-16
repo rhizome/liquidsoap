@@ -256,6 +256,8 @@ module Emitter_C = struct
         let env, x =
           (* In C a variable cannot be masked, so we have to rename
              variables. *)
+          (* TODO: rename the vas in an auxiliary function? The current way
+             messes up a bit the environments....  *)
           if List.mem_assoc x env.Env.vars then
             let n = ref 1 in
             let x' () = Printf.sprintf "%s%d" x !n in
@@ -284,11 +286,11 @@ module Emitter_C = struct
         env, [return (Printf.sprintf "%s" x)]
       | Address_of p ->
         let return = r (fun s -> "&" ^ s) in
-        let _, p = emit_prog ~return ~env p in
+        let env, p = emit_prog ~return ~env p in
         env, p
       | Load p ->
         let return = r (fun s -> Printf.sprintf "(*%s)" s) in
-        let _, p = emit_prog ~return ~env p in
+        let env, p = emit_prog ~return ~env p in
         env, p
       | Store ([Ident x], p) ->
         let x = ident x in
@@ -299,10 +301,10 @@ module Emitter_C = struct
         let t = prog_type ~env x in
         let tmp = tmp_var () in
         let return = r (fun s -> Printf.sprintf "%s %s = %s" (emit_type t) tmp s) in
-        let _, x = emit_prog ~return ~env x in
+        let env, x = emit_prog ~return ~env x in
         let x = append_last ";" x in
         let return = r (fun s -> Printf.sprintf "*%s = %s" tmp s) in
-        let _, p = emit_prog ~return ~env p in
+        let env, p = emit_prog ~return ~env p in
         env, x@p
       | Field (rr,x) ->
         let return = r (fun s -> Printf.sprintf "%s.%s" s x) in
@@ -310,13 +312,13 @@ module Emitter_C = struct
         env, p
       | If (p, p1, p2) ->
         let tmp = tmp_var () in
-        let _, b =
+        let env, b =
           let return s = Printf.sprintf "%s %s = %s" (emit_type T.Bool) tmp s in
           emit_prog ~return ~env p
         in
         let b = append_last ";" b in
-        let _, p1 = emit_prog ~return ~env p1 in
-        let _, p2 = emit_prog ~return ~env p2 in
+        let env, p1 = emit_prog ~return ~env p1 in
+        let env, p2 = emit_prog ~return ~env p2 in
         env, b@[Printf.sprintf "if (%s) {\n%s;\n} else {\n%s;\n}" tmp (String.concat "\n" p1) (String.concat "\n" p2)]
       | Op (op, args) ->
         let tmp_vars = ref [] in
