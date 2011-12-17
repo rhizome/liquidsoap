@@ -35,7 +35,7 @@ end
 (** An operation. *)
 type op =
   | FAdd | FSub | FMul | FDiv | FRem
-  | FLt
+  | FLt | FGe
   | Call of string
 
 (** An expression. *)
@@ -78,6 +78,7 @@ let print_op = function
   | FDiv -> "/"
   | FRem -> "mod"
   | FLt -> "<"
+  | FGe -> ">="
   | Call x -> x
 
 let rec print_expr = function
@@ -144,7 +145,7 @@ module Emitter_C = struct
       let ff_f = [T.Float; T.Float], T.Float in
       {
         vars = vars;
-        ops = [ FAdd, ff_f; FSub, ff_f; FMul, ff_f; FDiv, ff_f; FLt, ff_f; Call "sin", f_f ];
+        ops = [ FAdd, ff_f; FSub, ff_f; FMul, ff_f; FDiv, ff_f; FLt, ff_f; FGe, ff_f; Call "sin", f_f; Call "fmax", ff_f ];
         renamings = [];
       }
   end
@@ -256,8 +257,6 @@ module Emitter_C = struct
         let env, x =
           (* In C a variable cannot be masked, so we have to rename
              variables. *)
-          (* TODO: rename the vas in an auxiliary function? The current way
-             messes up a bit the environments....  *)
           if List.mem_assoc x env.Env.vars then
             let n = ref 1 in
             let x' () = Printf.sprintf "%s%d" x !n in
@@ -286,11 +285,11 @@ module Emitter_C = struct
         env, [return (Printf.sprintf "%s" x)]
       | Address_of p ->
         let return = r (fun s -> "&" ^ s) in
-        let env, p = emit_prog ~return ~env p in
+        let _, p = emit_prog ~return ~env p in
         env, p
       | Load p ->
         let return = r (fun s -> Printf.sprintf "(*%s)" s) in
-        let env, p = emit_prog ~return ~env p in
+        let _, p = emit_prog ~return ~env p in
         env, p
       | Store ([Ident x], p) ->
         let x = ident x in
@@ -301,10 +300,10 @@ module Emitter_C = struct
         let t = prog_type ~env x in
         let tmp = tmp_var () in
         let return = r (fun s -> Printf.sprintf "%s %s = %s" (emit_type t) tmp s) in
-        let env, x = emit_prog ~return ~env x in
+        let _, x = emit_prog ~return ~env x in
         let x = append_last ";" x in
         let return = r (fun s -> Printf.sprintf "*%s = %s" tmp s) in
-        let env, p = emit_prog ~return ~env p in
+        let _, p = emit_prog ~return ~env p in
         env, x@p
       | Field (rr,x) ->
         let return = r (fun s -> Printf.sprintf "%s.%s" s x) in
@@ -312,13 +311,13 @@ module Emitter_C = struct
         env, p
       | If (p, p1, p2) ->
         let tmp = tmp_var () in
-        let env, b =
+        let _, b =
           let return s = Printf.sprintf "%s %s = %s" (emit_type T.Bool) tmp s in
           emit_prog ~return ~env p
         in
         let b = append_last ";" b in
-        let env, p1 = emit_prog ~return ~env p1 in
-        let env, p2 = emit_prog ~return ~env p2 in
+        let _, p1 = emit_prog ~return ~env p1 in
+        let _, p2 = emit_prog ~return ~env p2 in
         env, b@[Printf.sprintf "if (%s) {\n%s;\n} else {\n%s;\n}" tmp (String.concat "\n" p1) (String.concat "\n" p2)]
       | Op (op, args) ->
         let tmp_vars = ref [] in
@@ -354,6 +353,7 @@ module Emitter_C = struct
             | FDiv -> [return (Printf.sprintf "(%s / %s)" args.(0) args.(1))]
             | FRem -> [return (Printf.sprintf "remainder(%s, %s)" args.(0) args.(1))]
             | FLt -> [return (Printf.sprintf "(%s < %s)" args.(0) args.(1))]
+            | FGe -> [return (Printf.sprintf "(%s >= %s)" args.(0) args.(1))]
             | Call f ->
               (
                 match f with

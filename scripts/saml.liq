@@ -2,8 +2,6 @@ math.pi = 3.14159265358979323846
 
 #saml = [=]
 
-event_dummy = event.channel()
-
 # Time
 
 saml.time = [=]
@@ -41,13 +39,14 @@ def saml.gen.voice (f) =
     velocity = ref (1.)
     def set_velocity (v) = velocity := v end
     active = ref (false)
-    def note_off () = velocity := 0.; active := false end
+    note_off = event.channel()
+    event.handle(note_off, fun (_) -> begin velocity := 0.; active := false end)
     def activate () = active := true end
     def is_active () = !active end
     [
         set_freq = set_freq,
         set_velocity = set_velocity,
-        note_off = note_off,
+        note_off = fun () -> event.emit(note_off,()),
         activate = activate,
         is_active = is_active,
         main = !velocity * f (!freq)
@@ -58,13 +57,22 @@ end
 
 saml.env = [=]
 
-def saml.env.adsr (~a=0.05,~d=0.02,~s=0.8,~r=0.5) =
+#c = event.channel()
+
+def adsr (~a=0.05,~d=0.02,~s=0.8,~r=0.5,~note_off=event.channel()) =
     t = saml.time.now()
-    if t < a then
+    rt = ref (-1.)
+    event.handle(note_off, fun(_)-> rt := t)
+
+    if !rt >= 0. then
+        math.max (0., (r - (t - !rt)) / r )
+    else if t < a then
         t / a
     else if t < d then
         (1. - (t - a) / d * (1. - s))
     else
         s
-    end end
+    end end end
 end
+
+saml.env.adsr = adsr

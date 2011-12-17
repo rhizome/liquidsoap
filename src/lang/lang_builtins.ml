@@ -510,7 +510,7 @@ let () =
     register_op "!=" (fun c -> c <> 0) ;
     register_op "<"  ~extern:"lt" (fun c -> c = -1) ;
     register_op "<=" (fun c -> c <> 1) ;
-    register_op ">=" (fun c -> c <> -1) ;
+    register_op ">=" ~extern:"ge" (fun c -> c <> -1) ;
     register_op ">"  (fun c -> c = 1)
 
 let () =

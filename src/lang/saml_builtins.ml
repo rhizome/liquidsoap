@@ -10,7 +10,19 @@ let register_math () =
     (fun p ->
       match (snd (List.hd p)).Lang.value with
         | Lang.Float i -> Lang.float (sin i)
-        | _ -> assert false)
+        | _ -> assert false);
+  add_builtin "math.max" ~cat:Math ~descr:"Max." ~extern:"fmax"
+    [
+      "",Lang.float_t,None,None;
+      "",Lang.float_t,None,None;
+    ]
+    Lang.float_t
+    (fun p ->
+      let x = Lang.assoc "" 1 p in
+      let y = Lang.assoc "" 2 p in
+      let x = Lang.to_float x in
+      let y = Lang.to_float y in
+      Lang.float (max x y))
 
 let register_event () =
   Lang.add_builtin "event.channel" ~category:(string_of_category Control)
