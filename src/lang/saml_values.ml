@@ -73,7 +73,7 @@ let rec free_vars tm =
   (* Printf.printf "free_vars: %s\n%!" (print_term tm); *)
   let fv = free_vars in
   let u v1 v2 = v1@v2 in
-  let r xx v = List.filter (fun y -> not (List.mem y xx)) v in
+  let r xx v = List.diff v xx in
   match tm.term with
     | Var x -> [x]
     | Unit | Bool _ | Int _ | String _ | Float _ -> []
@@ -368,13 +368,17 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) ?(event_vars=[]) tm =
       | Fun (vars, args, v) ->
         (* We have to use weak head reduction because some refs or events might
            use the arguments, e.g. fun (x) -> ref x. However, we need to reduce
-           toplevel declarations... So, we hack for now and only reduce nullary
-           functions. We should reduce all functions such that effects do not
-           depend on arguments. *)
+           toplevel declarations... *)
         (* let bound_vars = (List.map (fun (_,x,_,_) -> x) args)@bound_vars in *)
         (* let sv, v = reduce ~bound_vars v in *)
         (* sv, Fun (vars, args, v) *)
-        if args = [] then
+        (* TODO: we should extrude variables in order to be able to handle
+           handle(c,fun(x)->emit(c',x)). *)
+        (* TODO: instead of this, we should see when variables are not used in
+           impure positions (in argument of refs or events). *)
+        let fv = free_vars v in
+        let args_vars = List.map (fun (_,x,_,_) -> x) args in
+        if args_vars = [] || not (List.included args_vars fv) then
           let s, v = reduce v in
           s, Fun (vars, args, v)
         else
@@ -485,6 +489,8 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) ?(event_vars=[]) tm =
         (* in *)
         merge s s', Event_emit (c, v)
   in
+  (* Printf.printf "events: %s\n%!" (String.concat " " event_vars); *)
+  (* Printf.printf "reduce: %s => %s\n%!" (print_term tm) (print_term (mk term)); *)
   s, { term = term ; t = tm.t }
 
 and beta_reduce tm =
@@ -642,6 +648,10 @@ let emit name ?(keep_let=[]) ~env ~venv tm =
   (* Emit the events. *)
   let prog =
     let e = List.map (fun (x,h) -> x, make_term (Event_channel h)) state.events in
+    (* TODO: this only handles one level of events, we should do more fancy
+       things such as sorting them according to the free event variables,
+       etc. *)
+    let e = List.map (fun (x,c) -> x, substs e c) e in
     (* List.iter (fun (x,_) -> Printf.printf "subst event %s\n%!" x) e; *)
     let prog = substs e prog in
     Printf.printf "subst events: %s\n\n%!" (print_term prog);

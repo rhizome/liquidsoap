@@ -47,6 +47,12 @@ module Stdlib = struct
             | None -> may_map f l
         )
       | [] -> []
+
+    let included l1 l2 =
+      List.for_all (fun x -> List.mem x l2) l1
+
+    let diff l1 l2 =
+      List.filter (fun x -> not (List.mem x l2)) l1
   end
 end
 
