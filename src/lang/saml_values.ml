@@ -110,7 +110,7 @@ let rec fresh_let fv l =
 
 (** Apply a list of substitutions to a term. *)
 and substs ss tm =
-  (* Printf.printf "substs: %s\n%!" (print_term t); *)
+  (* Printf.printf "substs: %s\n%!" (print_term tm); *)
   let s ?(ss=ss) = substs ss in
   let fv ss = List.fold_left (fun fv (_,v) -> (free_vars v)@fv) [] ss in
   let term =
@@ -149,7 +149,7 @@ and substs ss tm =
           List.map
             (fun (l,x,t,v) ->
               let x' = if List.mem x (fv !ss) then fresh_var () else x in
-              ss := List.remove_all_assoc l !ss;
+              ss := List.remove_all_assoc x !ss;
               sp := (x, make_term (Var x')) :: !sp;
               l,x',t,Utils.may s v
             ) p

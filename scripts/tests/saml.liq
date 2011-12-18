@@ -76,13 +76,23 @@ def f () =
 end
 #saml.emit.generator.c(f())
 
+def f () =
+    x = ref (3.)
+    def r () = [ a = !x ] end
+    def f (r) = r.a end
+    f(r())
+end
+#saml.emit.generator.c(f())
+
 def osc () =
     def f (freq) = sin(2. * pi * freq * now()) end
 #    def f (freq) = now () * f(freq) end
-    def f (freq) = env.adsr(a=0.5) * f(freq) end
+    def f (note) =
+        #event.handle(note.note_off, fun (_) -> event.emit(note.deactivate, ()))
+        env.adsr(a=0.5) * f(note.freq)
+    end
     gen.voice(f)
 end
-
 saml.emit.generator.dssi.c(osc())
 
 #saml.emit.generator.c(osc().main)
