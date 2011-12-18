@@ -506,7 +506,7 @@ let () =
          | ["",a;"",b] -> Lang.bool (op (compare_value a b))
          | _ -> assert false)
   in
-    register_op "==" (fun c -> c = 0) ;
+    register_op "==" ~extern:"eq" (fun c -> c = 0) ;
     register_op "!=" (fun c -> c <> 0) ;
     register_op "<"  ~extern:"lt" (fun c -> c = -1) ;
     register_op "<=" (fun c -> c <> 1) ;

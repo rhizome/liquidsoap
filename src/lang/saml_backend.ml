@@ -34,8 +34,8 @@ end
 
 (** An operation. *)
 type op =
-  | FAdd | FSub | FMul | FDiv | FRem
-  | FLt | FGe
+  | FAdd | FSub | FMul | FDiv | FMod
+  | FEq | FLt | FGe
   | Call of string
 
 (** An expression. *)
@@ -76,7 +76,8 @@ let print_op = function
   | FSub -> "-"
   | FMul -> "*"
   | FDiv -> "/"
-  | FRem -> "mod"
+  | FMod -> "mod"
+  | FEq -> "=="
   | FLt -> "<"
   | FGe -> ">="
   | Call x -> x
@@ -143,9 +144,10 @@ module Emitter_C = struct
     let create ?(vars=[]) () =
       let f_f = [T.Float], T.Float in
       let ff_f = [T.Float; T.Float], T.Float in
+      let ff_b = [T.Float; T.Float], T.Bool in
       {
         vars = vars;
-        ops = [ FAdd, ff_f; FSub, ff_f; FMul, ff_f; FDiv, ff_f; FLt, ff_f; FGe, ff_f; Call "sin", f_f; Call "fmax", ff_f ];
+        ops = [ FAdd, ff_f; FSub, ff_f; FMul, ff_f; FDiv, ff_f; FEq, ff_b; FLt, ff_b; FGe, ff_b; Call "sin", f_f; Call "fmax", ff_f ];
         renamings = [];
       }
   end
@@ -351,7 +353,8 @@ module Emitter_C = struct
             | FSub -> [return (Printf.sprintf "(%s - %s)" args.(0) args.(1))]
             | FMul -> [return (Printf.sprintf "(%s * %s)" args.(0) args.(1))]
             | FDiv -> [return (Printf.sprintf "(%s / %s)" args.(0) args.(1))]
-            | FRem -> [return (Printf.sprintf "remainder(%s, %s)" args.(0) args.(1))]
+            | FMod -> [return (Printf.sprintf "remainder(%s, %s)" args.(0) args.(1))]
+            | FEq -> [return (Printf.sprintf "(%s == %s)" args.(0) args.(1))]
             | FLt -> [return (Printf.sprintf "(%s < %s)" args.(0) args.(1))]
             | FGe -> [return (Printf.sprintf "(%s >= %s)" args.(0) args.(1))]
             | Call f ->
