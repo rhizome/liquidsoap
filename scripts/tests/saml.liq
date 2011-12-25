@@ -111,6 +111,18 @@ end
 #saml.emit.generator.c(f())
 
 def f () =
+    def f (x) =
+        period = 440. * period
+        period
+    end
+    #f = time.frequencize(gen.sine())
+    x = f(440.)
+    print_float(period)
+    x
+end
+#saml.emit.generator.c(f())
+
+def f () =
     x = sin(2. * pi * now())
     #x = 5.
     x = filter.fo.low_pass(440., x)
@@ -129,7 +141,7 @@ def osc () =
     def f (note) =
         #event.handle(note.note_off, fun(_) -> event.emit(note.desactivate, ()))
         x = env.adsr(a=0.005, d=0.001, r=0.05, note_off=note.note_off, desactivate=note.desactivate) * f(note.freq) / 5.
-        #x = filter.fo.low_pass(200., x)
+        #x = filter.fo.low_pass(400. * now(), x)
         x
     end
     gen.voice(f)

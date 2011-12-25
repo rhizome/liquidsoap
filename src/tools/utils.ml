@@ -34,6 +34,9 @@ module Stdlib = struct
   module List = struct
     include List
 
+    let remove x l =
+      List.filter (fun y -> y <> x) l
+
     let rec remove_all_assoc x = function
       | (y,_)::l when y = x -> remove_all_assoc x l
       | (y,v)::l -> (y,v)::(remove_all_assoc x l)

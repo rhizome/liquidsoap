@@ -1,6 +1,8 @@
 (** AST for the backend before code emission. We should keep this as close as
     LLVM's representation as possible. *)
 
+open Utils.Stdlib
+
 (** Raised by "Liquidsoap" implementations of functions when no reduction is
     possible. *)
 exception Cannot_reduce
@@ -86,7 +88,7 @@ let print_op = function
   | Call x -> x
 
 let rec print_expr = function
-  | Let (x,p) -> Printf.sprintf "let %s = %s" x (print_prog p)
+  | Let (x,p) -> Printf.sprintf "let %s = [%s]" x (print_prog p)
   | Int n -> Printf.sprintf "%d" n
   | Float f -> Printf.sprintf "%f" f
   | Bool b -> Printf.sprintf "%B" b
@@ -128,9 +130,11 @@ module Emitter_C = struct
   module Env = struct
     type t =
         {
+          (** Variables already defined together with their type. *)
           vars : (string * T.t) list;
+          (** Operators along with their type. *)
           ops : (op * (T.t list * T.t)) list;
-          (* Variables to be renamed during emission. *)
+          (** Variables to be renamed during emission. *)
           renamings : (string * string) list;
         }
 
@@ -144,13 +148,13 @@ module Emitter_C = struct
     let add_vars env v =
       { env with vars = v@env.vars }
 
-    let create ?(vars=[]) () =
+    let create () =
       let f_f = [T.Float], T.Float in
       let ff_f = [T.Float; T.Float], T.Float in
       let ff_b = [T.Float; T.Float], T.Bool in
       let bb_b = [T.Bool; T.Bool], T.Bool in
       {
-        vars = vars;
+        vars = [];
         ops = [
           FAdd, ff_f; FSub, ff_f; FMul, ff_f; FDiv, ff_f; FMod, ff_f;
           FEq, ff_b; FLt, ff_b; FGe, ff_b;
@@ -294,7 +298,14 @@ module Emitter_C = struct
         let t = prog_type ~env p in
         let x' = rename_var ~env x in
         let return s = Printf.sprintf "%s %s = %s" (emit_type t) x' s in
-        let env, p = emit_prog ~return ~env p in
+        (* We have to add the variable before in order to cope with
+           situations like let x = let x = ... in ... *)
+        let env = Env.add_var env (x',t) in
+        let env', p = emit_prog ~return ~env p in
+        (* This is a hack necessary because of the situation mentionned above:
+           we don't want to keep the introduced renamings in the following but
+           we want to keep the names of already defined variables. *)
+        let env = { env with Env.vars = env'.Env.vars } in
         let env = Env.add_var env (x',t) in
         let env =
           if x = x' then
@@ -389,7 +400,8 @@ module Emitter_C = struct
             | Call f ->
               (
                 match f with
-                  | "print_int" -> [return (Printf.sprintf "printf(\"%%d\",%s)" args.(0))]
+                  | "print_int" -> [return (Printf.sprintf "printf(\"%%d\\n\",%s)" args.(0))]
+                  | "print_float" -> [return (Printf.sprintf "printf(\"%%f\\n\",%s)" args.(0))]
                   | _ ->
                     let args = Array.to_list args in
                     let args = String.concat ", " args in

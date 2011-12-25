@@ -255,7 +255,7 @@ let rec is_pure ~env tm =
     | _ -> false
 
 let rec is_value ~env tm =
-  Printf.printf "is_value: %s\n%!" (print_term tm);
+  (* Printf.printf "is_value: %s\n%!" (print_term tm); *)
   let is_value ?(env=env) = is_value ~env in
   match tm.term with
     | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> true
@@ -313,7 +313,14 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) ?(event_vars=[]) tm =
             let o = occurences l.var l.body in
             o = 0 || (o = 1 && is_pure ~env def)
            )
-        ) && not (List.mem l.var !meta_vars)
+        )
+        (* We can rename meta-variables here because we are in weak-head
+           reduction, so we know that any value using the meta-variable below
+           will already be inlined. *)
+        (* However, we have to keep the variables defined by lets that we want to
+           keep, which are also in meta_vars. *)
+          (* TODO: clean this up... *)
+          && not (List.mem l.var !meta_vars)
         then
           let env = (l.var,def)::env in
           let event_vars = (List.map fst sdef.events)@event_vars in
@@ -599,7 +606,14 @@ let rec emit_prog tm =
     | Field (r,x,_) ->
       (* Records are always passed by reference. *)
       [B.Field ([B.Load (emit_prog r)], x)]
-    | Let l -> (B.Let (l.var, emit_prog l.def))::(emit_prog l.body)
+    | Let l ->
+      (* We have to rename the variable because it could occur in after the let. *)
+      (* let x = fresh_var () in *)
+      (* let def = emit_prog l.def in *)
+      (* let body = subst l.var (make_var ~t:l.def.t x) l.body in *)
+      (* let body = emit_prog body in *)
+      (* (B.Let (x, def))::body *)
+      (B.Let (l.var, emit_prog l.def))::(emit_prog l.body)
     | Unit -> []
     | Int n -> [B.Int n]
     | Fun _ -> assert false

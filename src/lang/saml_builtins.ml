@@ -62,6 +62,13 @@ let register_other () =
       let n = Lang.to_int (List.assoc "" p) in
       Printf.printf "%d" n;
       Lang.unit
+    );
+  add_builtin "print_float" ~cat:Control ~descr:"Print an integer." ~extern:"print_float"
+    ["", Lang.float_t, None, None] Lang.unit_t
+    (fun p ->
+      let x = Lang.to_float (List.assoc "" p) in
+      Printf.printf "%f" x;
+      Lang.unit
     )
 
 let register () =

@@ -119,7 +119,8 @@ end
 saml.filter.fo = [=]
 
 def saml.filter.fo.low_pass (freq, x) =
-    a = period / (1. / (2. * math.pi * freq) + period)
+    omega = 2. * math.pi * freq * period
+    a = omega / (1. + omega)
     #TODO: there would be a nice definition with prev if we had recursion...
     y' = ref (0.)
     y = a * x + (1. - a) * !y'
