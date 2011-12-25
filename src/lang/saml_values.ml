@@ -505,6 +505,7 @@ let rec emit_type t =
     | T.Ground T.Unit -> B.T.Void
     | T.Ground T.Bool -> B.T.Bool
     | T.Ground T.Float -> B.T.Float
+    | T.Ground T.Int -> B.T.Int
     | T.Constr { T.name = "ref"; params = [_,t] } -> B.T.Ptr (emit_type t)
     | T.Arrow (args, t) ->
       let args = List.map (fun (o,l,t) -> assert (not o); assert (l = ""); emit_type t) args in
@@ -563,11 +564,13 @@ let rec emit_prog tm =
                       | "eq" -> B.FEq
                       | "lt" -> B.FLt
                       | "ge" -> B.FGe
+                      | "and" -> B.BAnd
+                      | "or" -> B.BOr
                       | _ -> B.Call x
                   in
                   [B.Op (op, l)]
             )
-          | _ -> Printf.printf "unhandled app: %s(...)" (print_term (make_term x)); assert false
+          | _ -> Printf.printf "unhandled app: %s(...)\n%!" (print_term (make_term x)); assert false
       )
     | Field (r,x,_) ->
       (* Records are always passed by reference. *)
@@ -592,7 +595,7 @@ let rec emit_decl_prog tm =
     (* Hack to keep top-level declarations that we might need. We should
        explicitly flag them instead of keeping them all... *)
     | Let l when (match (T.deref l.def.t).T.descr with T.Arrow _ -> true | _ -> false) ->
-      Printf.printf "def: %s : %s\n%!" (print_term l.def) (T.print l.def.t);
+      Printf.printf "def: %s = %s : %s\n%!" l.var (print_term l.def) (T.print l.def.t);
       let t = emit_type l.def.t in
       (
         match t with
@@ -656,11 +659,11 @@ let emit name ?(keep_let=[]) ~env ~venv tm =
     let prog = substs e prog in
     Printf.printf "subst events: %s\n\n%!" (print_term prog);
     (* ( *)
-      (* let s, prog = reduce prog in *)
-      (* Printf.printf "before evented: %s\n\n%!" (print_term prog); *)
-      (* let refs = String.concat " " (List.map fst s.refs) in *)
-      (* let events = String.concat " " (List.map fst s.events) in *)
-      (* Printf.printf "refs: %s\nevents: %s\n\n%!" refs events *)
+    (* let s, prog = reduce prog in *)
+    (* Printf.printf "before evented: %s\n\n%!" (print_term prog); *)
+    (* let refs = String.concat " " (List.map fst s.refs) in *)
+    (* let events = String.concat " " (List.map fst s.events) in *)
+    (* Printf.printf "refs: %s\nevents: %s\n\n%!" refs events *)
     (* ); *)
     beta_reduce prog
   in
@@ -668,14 +671,16 @@ let emit name ?(keep_let=[]) ~env ~venv tm =
 
   (* Compute the state. *)
   let refs = state.refs in
+  let refs = refs in
   let refs_t = List.map (fun (x,v) -> x, emit_type v.V.t) refs in
+  let refs_t = ("period", B.T.Float)::refs_t in
   let refs = List.map (fun (x,v) -> x, emit_prog v) refs in
   let state_t = B.T.Struct refs_t in
   let state_decl = B.Decl_type ("saml_state", state_t) in
 
   (* Emit the program. *)
   let decls, prog = emit_decl_prog prog in
-  let prog = B.Decl ((name, ["period", B.T.Float], emit_type tm.t), prog) in
+  let prog = B.Decl ((name, [], emit_type tm.t), prog) in
   let decls = decls@[prog] in
 
   (* Add state to emitted functions. *)
@@ -689,6 +694,12 @@ let emit name ?(keep_let=[]) ~env ~venv tm =
       in
       List.map (fun (x,_) -> f x) refs
     in
+    let alias_period =
+      let s = [B.Load [B.Ident "state"]] in
+      let r = [B.Field(s,"period")] in
+      B.Let ("period", r)
+    in
+    let alias_state = alias_period::alias_state in
     List.map
       (function
         | B.Decl ((name, args, t), prog) ->

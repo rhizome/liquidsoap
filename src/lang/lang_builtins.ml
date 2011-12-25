@@ -514,14 +514,14 @@ let () =
     register_op ">"  (fun c -> c = 1)
 
 let () =
-  add_builtin "and" ~cat:Bool
+  add_builtin "and" ~cat:Bool ~extern:"and"
     ~descr:"Return the conjunction of its arguments"
     ["",Lang.bool_t,None,None;"",Lang.bool_t,None,None] Lang.bool_t
     (fun p ->
        match List.map (fun (_,x) -> Lang.to_bool x) p with
          | [a;b] -> Lang.bool (a && b)
          | _ -> assert false) ;
-  add_builtin "or" ~cat:Bool
+  add_builtin "or" ~cat:Bool ~extern:"or"
     ~descr:"Return the disjunction of its arguments"
     ["",Lang.bool_t,None,None;"",Lang.bool_t,None,None] Lang.bool_t
     (fun p ->

@@ -11,7 +11,7 @@ let enabled = ref false
 let typing_env =
   let float_t = T.make (T.Ground T.Float) in
   [
-    "now",([],float_t);
+    (* "now",([],float_t); *)
     "period",([],float_t);
   ]
 

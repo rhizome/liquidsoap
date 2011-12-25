@@ -36,6 +36,7 @@ end
 type op =
   | FAdd | FSub | FMul | FDiv | FMod
   | FEq | FLt | FGe
+  | BAnd | BOr
   | Call of string
 
 (** An expression. *)
@@ -80,6 +81,8 @@ let print_op = function
   | FEq -> "=="
   | FLt -> "<"
   | FGe -> ">="
+  | BAnd -> "&&"
+  | BOr -> "||"
   | Call x -> x
 
 let rec print_expr = function
@@ -145,9 +148,15 @@ module Emitter_C = struct
       let f_f = [T.Float], T.Float in
       let ff_f = [T.Float; T.Float], T.Float in
       let ff_b = [T.Float; T.Float], T.Bool in
+      let bb_b = [T.Bool; T.Bool], T.Bool in
       {
         vars = vars;
-        ops = [ FAdd, ff_f; FSub, ff_f; FMul, ff_f; FDiv, ff_f; FEq, ff_b; FLt, ff_b; FGe, ff_b; Call "sin", f_f; Call "fmax", ff_f ];
+        ops = [
+          FAdd, ff_f; FSub, ff_f; FMul, ff_f; FDiv, ff_f; FMod, ff_f;
+          FEq, ff_b; FLt, ff_b; FGe, ff_b;
+          BAnd, bb_b; BOr, bb_b;
+          Call "sin", f_f; Call "fmax", ff_f;
+        ];
         renamings = [];
       }
   end
@@ -163,32 +172,36 @@ module Emitter_C = struct
   let append_last s l =
     map_last (fun x -> x^s) l
 
-  let rec expr_type ~env = function
-    | Ident x -> List.assoc x env.Env.vars
-    | Int _ -> T.Int
-    | Float _ -> T.Float
-    | Bool _ -> T.Bool
-    | Alloc t -> T.Ptr t
-    | Free _ -> T.Void
-    | Load r ->
-      (
-        match prog_type ~env r with
-          | T.Ptr t -> t
-          | _ -> assert false
-      )
-    | Store _ -> T.Void
-    | Op (op, _) -> snd (List.assoc op env.Env.ops)
-    | Let _ -> T.Void
-    | Field (r,x) ->
-      let t =
-        match prog_type ~env r with
-          | T.Struct r -> r
-          | _ -> assert false
-      in
-      List.assoc x t
-    | Address_of r -> T.Ptr (prog_type ~env r)
-    | If (p,p1,p2) -> prog_type ~env p1
-    | Null t -> t
+  let rec expr_type ~env e =
+    (* Printf.printf "expr_type: %s\n%!" (print_expr e); *)
+    match e with
+      | Ident x -> List.assoc x env.Env.vars
+      | Int _ -> T.Int
+      | Float _ -> T.Float
+      | Bool _ -> T.Bool
+      | Alloc t -> T.Ptr t
+      | Free _ -> T.Void
+      | Load r ->
+        (
+          match prog_type ~env r with
+            | T.Ptr t -> t
+            | _ -> assert false
+        )
+      | Store _ -> T.Void
+      | Op (op, _) ->
+        (* Printf.printf "expr_type_op: %s\n%!" (print_op op); *)
+        snd (List.assoc op env.Env.ops)
+      | Let _ -> T.Void
+      | Field (r,x) ->
+        let t =
+          match prog_type ~env r with
+            | T.Struct r -> r
+            | _ -> assert false
+        in
+        List.assoc x t
+      | Address_of r -> T.Ptr (prog_type ~env r)
+      | If (p,p1,p2) -> prog_type ~env p1
+      | Null t -> t
 
   and prog_type ~env = function
     | [] -> T.Void
@@ -357,6 +370,8 @@ module Emitter_C = struct
             | FEq -> [return (Printf.sprintf "(%s == %s)" args.(0) args.(1))]
             | FLt -> [return (Printf.sprintf "(%s < %s)" args.(0) args.(1))]
             | FGe -> [return (Printf.sprintf "(%s >= %s)" args.(0) args.(1))]
+            | BAnd -> [return (Printf.sprintf "(%s && %s)" args.(0) args.(1))]
+            | BOr -> [return (Printf.sprintf "(%s || %s)" args.(0) args.(1))]
             | Call f ->
               (
                 match f with
@@ -468,6 +483,7 @@ module Emitter_C = struct
     let add s = ans := !ans ^ s ^ "\n" in
     add (Printf.sprintf "#define STATE saml_state");
     add (Printf.sprintf "#define SAML_name %S" name);
+    add (Printf.sprintf "#define SAML_synth %s" name);
     add (Printf.sprintf "#define SAML_synth_alloc %s" (name^"_alloc"));
     add (Printf.sprintf "#define SAML_synth_reset %s" (name^"_reset"));
     add (Printf.sprintf "#define SAML_synth_free %s" (name^"_free"));

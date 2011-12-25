@@ -38,7 +38,6 @@ typedef struct
   LADSPA_Data *output;
   /* Internal state of a voice. */
   STATE *state[POLYPHONY];
-  float period;
 } SAML_synth_t;
 
 /* Allocate the internal structures of the synth. */
@@ -48,8 +47,10 @@ static LADSPA_Handle SAML_instantiate(const LADSPA_Descriptor *descriptor, unsig
   int i;
 
   for (i = 0; i < POLYPHONY; i++)
-    h->state[i] = SAML_synth_alloc();
-  h->period = 1. / (float)sample_rate;
+    {
+      h->state[i] = SAML_synth_alloc();
+      h->state[i]->period = 1. / (float)sample_rate;
+    }
 
   return (LADSPA_Handle)h;
 }
@@ -157,7 +158,7 @@ static void SAML_run_synth(LADSPA_Handle instance, unsigned long sample_count, s
       h->output[pos] = 0.0f;
       for (note = 0; note < POLYPHONY; note++)
         if (SAML_synth_is_active(h->state[note]))
-          h->output[pos] += saml_synth(h->state[note], h->period);
+          h->output[pos] += SAML_synth(h->state[note]);
     }
 }
 
