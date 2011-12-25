@@ -1,7 +1,5 @@
 math.pi = 3.14159265358979323846
 
-#saml = [=]
-
 # Time
 
 saml.time = [=]
@@ -16,9 +14,27 @@ end
 
 def saml.time.now () = saml.time.integrator(1.) end
 
+def saml.time.frequencize (x, freq) =
+    period = freq * period
+    x
+end
+
 # Generators
 
 saml.gen = [=]
+
+def saml.gen.sine() =
+    math.sin(2. * math.pi * saml.time.now())
+end
+
+def saml.gen.saw() =
+    saml.time.now() mod 1.
+end
+
+def saml.gen.square() =
+    x = saml.gen.saw()
+    if x < 0. then -1. else 1. end
+end
 
 def saml.gen.seq (a,b) =
     first = ref true
@@ -67,7 +83,7 @@ saml.env = [=]
 
 #c = event.channel()
 
-def adsr (~a=0.05,~d=0.02,~s=0.8,~r=0.5,~note_off=event.channel(),~desactivate=event.channel()) =
+def adsr (~a=0.05,~d=0.02,~s=0.8,~r=0.01,~note_off=event.channel(),~desactivate=event.channel()) =
     t = saml.time.now()
     rt = ref (-1.)
     event.handle(note_off, fun(_)-> rt := t)
@@ -87,3 +103,26 @@ def adsr (~a=0.05,~d=0.02,~s=0.8,~r=0.5,~note_off=event.channel(),~desactivate=e
 end
 
 saml.env.adsr = adsr
+
+# Filters
+
+saml.filter = [=]
+
+def saml.filter.prev (x) =
+    p = ref 0.
+    y = !p
+    p := x
+    y
+end
+
+# First-order filters
+saml.filter.fo = [=]
+
+def saml.filter.fo.low_pass (freq, x) =
+    a = period / (1. / (2. * math.pi * freq) + period)
+    #TODO: there would be a nice definition with prev if we had recursion...
+    y' = ref (0.)
+    y = a * x + (1. - a) * !y'
+    y' := y
+    y
+end

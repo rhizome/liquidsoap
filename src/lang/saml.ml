@@ -45,6 +45,7 @@ let register_builtins () =
       let oc = open_out fname in
       output_string oc v;
       close_out oc;
+      ignore (Sys.command (Printf.sprintf "gcc -O3 -g -c -Wall %s" fname));
       Lang.unit
     );
   let arr t1 t2 = T.make (T.Arrow([false,"",t1], t2)) in

@@ -11,6 +11,7 @@ type t = V.term
 
 let builtin_prefix = "#saml_"
 let builtin_prefix_re = Str.regexp ("^"^builtin_prefix)
+let is_builtin_var x = Str.string_match builtin_prefix_re x 0
 
 let default_meta_vars = ["period"]
 
@@ -240,6 +241,27 @@ let rec term_of_value v =
   in
   make_term term
 
+(** Is a term pure (ie does not contain side effects)? *)
+let rec is_pure ~env tm =
+  let is_pure ?(env=env) = is_pure ~env in
+  match tm.term with
+    | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> true
+    (* | App ({ term = Var x }, args) when is_builtin_var x -> *)
+    (* TODO: we suppose for now that all builtins are pure, we should actually
+       specify this somewhere for each external. *)
+    (* List.for_all (fun (_,v) -> is_pure v) args *)
+    | Get _ | Set _ -> false
+    (* TODO: handle more cases *)
+    | _ -> false
+
+let rec is_value ~env tm =
+  Printf.printf "is_value: %s\n%!" (print_term tm);
+  let is_value ?(env=env) = is_value ~env in
+  match tm.term with
+    | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> true
+    (* TODO: handle more cases, for instance: let x = ... in 3 *)
+    | _ ->  false
+
 type state =
     {
       refs : (string * term) list;
@@ -281,16 +303,18 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) ?(event_vars=[]) tm =
     match tm.term with
       | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> empty_state, tm.term
       | Let l ->
-        if
-          (
-            (match (T.deref l.def.t).T.descr with
-              | T.Arrow _ | T.Record _ -> true
-              | T.Constr { T.name = "event" } -> true
-              | _ -> false
-            ) || occurences l.var l.body <= 1
-          ) && not (List.mem l.var !meta_vars)
+        let sdef, def = reduce l.def in
+        if (
+          (match (T.deref def.t).T.descr with
+            | T.Arrow _ | T.Record _ -> true
+            | T.Constr { T.name = "event" } -> true
+            | _ -> is_value ~env def
+          ) || (
+            let o = occurences l.var l.body in
+            o = 0 || (o = 1 && is_pure ~env def)
+           )
+        ) && not (List.mem l.var !meta_vars)
         then
-          let sdef, def = reduce l.def in
           let env = (l.var,def)::env in
           let event_vars = (List.map fst sdef.events)@event_vars in
           let body = subst l.var def l.body in
@@ -298,7 +322,6 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) ?(event_vars=[]) tm =
           merge sdef sbody, body.term
         else
           let var, body = fresh_let bound_vars l in
-          let sdef, def = reduce l.def in
           let env = (l.var,def)::env in
           let event_vars = (List.map fst sdef.events)@event_vars in
           let sbody, body = reduce ~bound_vars:(var::bound_vars) ~env ~event_vars body in
@@ -446,6 +469,7 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) ?(event_vars=[]) tm =
            value: in let r = ref (0.) in handle(c, fun (x) -> r := !r + x), we
            want r to be substituted by the global variable representing the
            reference. *)
+        (* TODO: we should only substitute effect-free values! *)
         (* Printf.printf "env: %s\n%!" (String.concat " " (List.map fst env)); *)
         let h = substs env h in
         let s',h = reduce h in
@@ -479,13 +503,13 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) ?(event_vars=[]) tm =
         let s, c = reduce c in
         let s',v = reduce v in
         (* let rec aux c = *)
-          (* match c.term with *)
-            (* | Var _ -> *)
-              (* mk (Event_emit (c, v)) *)
-            (* | Event_channel l -> *)
-              (* let l = List.map (fun f -> mk (App(f,["",v]))) l in *)
-              (* let f = List.fold_left (fun s f -> mk (Seq (s,f))) (mk Unit) l in *)
-              (* beta_reduce f *)
+        (* match c.term with *)
+        (* | Var _ -> *)
+        (* mk (Event_emit (c, v)) *)
+        (* | Event_channel l -> *)
+        (* let l = List.map (fun f -> mk (App(f,["",v]))) l in *)
+        (* let f = List.fold_left (fun s f -> mk (Seq (s,f))) (mk Unit) l in *)
+        (* beta_reduce f *)
         (* in *)
         merge s s', Event_emit (c, v)
   in
@@ -536,7 +560,7 @@ let rec emit_prog tm =
       (
         (* Printf.printf "emit_prog app: %s\n%!" (print_term (make_term x)); *)
         match x with
-          | Var x when Str.string_match builtin_prefix_re x 0 ->
+          | Var x when is_builtin_var x ->
             let x =
               let bpl = String.length builtin_prefix in
               String.sub x bpl (String.length x - bpl)

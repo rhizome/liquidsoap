@@ -159,6 +159,12 @@ module Emitter_C = struct
         ];
         renamings = [];
       }
+
+  let ident env x =
+    try
+      List.assoc x env.renamings
+    with
+      | Not_found -> x
   end
 
   let rec map_last f = function
@@ -175,7 +181,9 @@ module Emitter_C = struct
   let rec expr_type ~env e =
     (* Printf.printf "expr_type: %s\n%!" (print_expr e); *)
     match e with
-      | Ident x -> List.assoc x env.Env.vars
+      | Ident x ->
+        let x = Env.ident env x in
+        List.assoc x env.Env.vars
       | Int _ -> T.Int
       | Float _ -> T.Float
       | Bool _ -> T.Bool
@@ -210,6 +218,26 @@ module Emitter_C = struct
       let env = Env.add_var env (x,prog_type ~env p) in
       prog_type ~env ee
     | _::ee -> prog_type ~env ee
+
+  (** Rename a variable if necessary: it takes cares of the fact that in C a
+      variable cannot be masked and moreover some charaters are forbidden in
+      variable names. *)
+  let rename_var ~env x =
+    let defined x = List.mem_assoc x env.Env.vars in
+    let x' =
+      if defined x then
+        let n = ref 1 in
+        let x' () = Printf.sprintf "%s%d" x !n in
+        while List.mem_assoc (x'()) env.Env.vars do
+          incr n
+        done;
+        Printf.sprintf "%s%d" x !n
+      else
+        x
+    in
+    let x' = Str.global_replace (Str.regexp "'") "_prime" x' in
+    assert (not (defined x'));
+    x'
 
   let type_decl =
     let n = ref 0 in
@@ -255,12 +283,6 @@ module Emitter_C = struct
     (* Printf.printf "emit_expr: %s\n%!" (print_expr e); *)
     let decl x t = Printf.sprintf "%s %s;" (emit_type t) x in
     let r f s = return (f s) in
-    let ident x =
-      try
-        List.assoc x env.Env.renamings
-      with
-        | Not_found -> x
-    in
     match e with
       | Alloc t ->
         env, [return (Printf.sprintf "malloc(sizeof(%s))" (emit_type t))]
@@ -269,25 +291,17 @@ module Emitter_C = struct
         let _, p = emit_prog ~return ~env p in
         env, p
       | Let (x,p) ->
-        let env, x =
-          (* In C a variable cannot be masked, so we have to rename
-             variables. *)
-          if List.mem_assoc x env.Env.vars then
-            let n = ref 1 in
-            let x' () = Printf.sprintf "%s%d" x !n in
-            while List.mem_assoc (x'()) env.Env.vars do
-              incr n
-            done;
-            let x' = x' () in
-            let env = { env with Env.renamings = (x,x')::env.Env.renamings } in
-            env, x'
-          else
-            env, x
-        in
         let t = prog_type ~env p in
-        let return s = Printf.sprintf "%s %s = %s" (emit_type t) x s in
+        let x' = rename_var ~env x in
+        let return s = Printf.sprintf "%s %s = %s" (emit_type t) x' s in
         let env, p = emit_prog ~return ~env p in
-        let env = Env.add_var env (x,t) in
+        let env = Env.add_var env (x',t) in
+        let env =
+          if x = x' then
+            env
+          else
+            { env with Env.renamings = (x,x')::env.Env.renamings }
+        in
         env, p
       | Int n ->
         env, [return (Printf.sprintf "%d" n)]
@@ -296,7 +310,7 @@ module Emitter_C = struct
       | Bool b ->
         env, [return (if b then "1" else "0")]
       | Ident x ->
-        let x = ident x in
+        let x = Env.ident env x in
         env, [return (Printf.sprintf "%s" x)]
       | Address_of p ->
         let return = r (fun s -> "&" ^ s) in
@@ -307,7 +321,7 @@ module Emitter_C = struct
         let _, p = emit_prog ~return ~env p in
         env, p
       | Store ([Ident x], p) ->
-        let x = ident x in
+        let x = Env.ident env x in
         let return = r (fun s -> Printf.sprintf "*%s = %s" x s) in
         let _, p = emit_prog ~return ~env p in
         env, p
