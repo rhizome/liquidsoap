@@ -132,6 +132,8 @@ module Emitter_C = struct
         {
           (** Variables already defined together with their type. *)
           vars : (string * T.t) list;
+          (** Variables already used (in order to avoid masking variables). *)
+          used_vars : string list;
           (** Operators along with their type. *)
           ops : (op * (T.t list * T.t)) list;
           (** Variables to be renamed during emission. *)
@@ -143,10 +145,10 @@ module Emitter_C = struct
     let type_decls = ref []
 
     let add_var env (v,t) =
-      { env with vars = (v,t)::env.vars }
+      { env with vars = (v,t)::env.vars; used_vars = v::env.used_vars }
 
     let add_vars env v =
-      { env with vars = v@env.vars }
+      { env with vars = v@env.vars; used_vars = (List.map fst v)@env.used_vars }
 
     let create () =
       let f_f = [T.Float], T.Float in
@@ -155,6 +157,7 @@ module Emitter_C = struct
       let bb_b = [T.Bool; T.Bool], T.Bool in
       {
         vars = [];
+        used_vars = [];
         ops = [
           FAdd, ff_f; FSub, ff_f; FMul, ff_f; FDiv, ff_f; FMod, ff_f;
           FEq, ff_b; FLt, ff_b; FGe, ff_b;
@@ -227,12 +230,12 @@ module Emitter_C = struct
       variable cannot be masked and moreover some charaters are forbidden in
       variable names. *)
   let rename_var ~env x =
-    let defined x = List.mem_assoc x env.Env.vars in
+    let defined x = List.mem x env.Env.used_vars in
     let x' =
       if defined x then
         let n = ref 1 in
         let x' () = Printf.sprintf "%s%d" x !n in
-        while List.mem_assoc (x'()) env.Env.vars do
+        while List.mem (x'()) env.Env.used_vars do
           incr n
         done;
         Printf.sprintf "%s%d" x !n
@@ -300,12 +303,12 @@ module Emitter_C = struct
         let return s = Printf.sprintf "%s %s = %s" (emit_type t) x' s in
         (* We have to add the variable before in order to cope with
            situations like let x = let x = ... in ... *)
-        let env = Env.add_var env (x',t) in
+        let env = { env with Env.used_vars = x'::env.Env.used_vars } in
         let env', p = emit_prog ~return ~env p in
         (* This is a hack necessary because of the situation mentionned above:
            we don't want to keep the introduced renamings in the following but
            we want to keep the names of already defined variables. *)
-        let env = { env with Env.vars = env'.Env.vars } in
+        let env = { env with Env.used_vars = env'.Env.used_vars } in
         let env = Env.add_var env (x',t) in
         let env =
           if x = x' then

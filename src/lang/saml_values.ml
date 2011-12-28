@@ -319,7 +319,7 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) ?(event_vars=[]) tm =
            will already be inlined. *)
         (* However, we have to keep the variables defined by lets that we want to
            keep, which are also in meta_vars. *)
-          (* TODO: clean this up... *)
+          (* TODO: clean this up, at least by separating meta_vars and keep_vars... *)
           && not (List.mem l.var !meta_vars)
         then
           let env = (l.var,def)::env in
@@ -607,12 +607,6 @@ let rec emit_prog tm =
       (* Records are always passed by reference. *)
       [B.Field ([B.Load (emit_prog r)], x)]
     | Let l ->
-      (* We have to rename the variable because it could occur in after the let. *)
-      (* let x = fresh_var () in *)
-      (* let def = emit_prog l.def in *)
-      (* let body = subst l.var (make_var ~t:l.def.t x) l.body in *)
-      (* let body = emit_prog body in *)
-      (* (B.Let (x, def))::body *)
       (B.Let (l.var, emit_prog l.def))::(emit_prog l.body)
     | Unit -> []
     | Int n -> [B.Int n]
