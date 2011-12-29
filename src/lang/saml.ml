@@ -117,7 +117,7 @@ let register_builtins () =
       let oc = open_out (fname ^ ".c") in
       output_string oc v;
       close_out oc;
-      ignore (Sys.command (Printf.sprintf "gcc -fPIC -O3 -g -shared -Wall %s.c -o %s.so" fname fname));
+      ignore (Sys.command (Printf.sprintf "gcc -fPIC -O3 -g -shared -Wall -Wno-unused-variable %s.c -o %s.so" fname fname));
       Lang.unit
     );
   Saml_builtins.register ()

@@ -102,6 +102,21 @@ let occurences x tm =
   List.iter (fun y -> if y = x then incr ans) (free_vars tm);
   !ans
 
+(** Is a term pure (ie does not contain side effects)? *)
+let rec is_pure ~env tm =
+  (* Printf.printf "is_pure: %s\n%!" (print_term tm); *)
+  let is_pure ?(env=env) = is_pure ~env in
+  match tm.term with
+    (* TODO: use env for vars *)
+    | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> true
+    (* | App ({ term = Var x }, args) when is_builtin_var x -> *)
+    (* TODO: we suppose for now that all builtins are pure, we should actually
+       specify this somewhere for each external. *)
+    (* List.for_all (fun (_,v) -> is_pure v) args *)
+    | Get _ | Set _ -> false
+    (* TODO: handle more cases *)
+    | _ -> false
+
 let rec fresh_let fv l =
   if List.mem l.var fv then
     let var = fresh_var () in
@@ -110,7 +125,9 @@ let rec fresh_let fv l =
     l.var, l.body
 
 (** Apply a list of substitutions to a term. *)
-and substs ss tm =
+and substs ?(pure=false) ss tm =
+  let substs = substs ~pure in
+  let subs = subst ~pure in
   (* Printf.printf "substs: %s\n%!" (print_term tm); *)
   let s ?(ss=ss) = substs ss in
   let fv ss = List.fold_left (fun fv (_,v) -> (free_vars v)@fv) [] ss in
@@ -118,7 +135,11 @@ and substs ss tm =
     match tm.term with
       | Var x ->
         let rec aux = function
-          | (x',v)::ss when x' = x -> (substs ss v).term
+          | (x',v)::ss when x' = x ->
+            let tm = substs ss v in
+            (* TODO... *)
+            (* if pure then assert (is_pure ~env:[] tm); *)
+            tm.term
           | _::ss -> aux ss
           | [] -> tm.term
         in
@@ -170,7 +191,7 @@ and substs ss tm =
   in
   make_term ~t:tm.t term
 
-and subst x v tm = substs [x,v] tm
+and subst ?pure x v tm = substs ?pure [x,v] tm
 
 (* Convert values to terms. This is a hack necessary becausse FFI are values and
    not terms (we should change this someday...). *)
@@ -240,19 +261,6 @@ let rec term_of_value v =
       | V.V.Event_channel l -> Event_channel (List.map term_of_value l)
   in
   make_term term
-
-(** Is a term pure (ie does not contain side effects)? *)
-let rec is_pure ~env tm =
-  let is_pure ?(env=env) = is_pure ~env in
-  match tm.term with
-    | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> true
-    (* | App ({ term = Var x }, args) when is_builtin_var x -> *)
-    (* TODO: we suppose for now that all builtins are pure, we should actually
-       specify this somewhere for each external. *)
-    (* List.for_all (fun (_,v) -> is_pure v) args *)
-    | Get _ | Set _ -> false
-    (* TODO: handle more cases *)
-    | _ -> false
 
 let rec is_value ~env tm =
   (* Printf.printf "is_value: %s\n%!" (print_term tm); *)
@@ -478,7 +486,7 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) ?(event_vars=[]) tm =
            reference. *)
         (* TODO: we should only substitute effect-free values! *)
         (* Printf.printf "env: %s\n%!" (String.concat " " (List.map fst env)); *)
-        let h = substs env h in
+        let h = substs ~pure:true env h in
         let s',h = reduce h in
         let s = merge s s' in
         let rec aux c =

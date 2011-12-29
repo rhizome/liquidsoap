@@ -11,9 +11,6 @@ type t = {
 }
 
 let builtins =
-  let f_f = B.T.Arr ([B.T.Float], B.T.Float) in
-  let ff_f = B.T.Arr ([B.T.Float; B.T.Float], B.T.Float) in
-  let f_u = B.T.Arr ([B.T.Float], B.T.Void) in
   let b name =
     let default_emit_c args =
       let args = Array.to_list args in
@@ -27,10 +24,18 @@ let builtins =
         b_emit_c = c;
       }
   in
+  let f_f = B.T.Arr ([B.T.Float], B.T.Float) in
+  let ff_f = B.T.Arr ([B.T.Float; B.T.Float], B.T.Float) in
+  let f_u = B.T.Arr ([B.T.Float], B.T.Void) in
+  let c_bop op args = Printf.sprintf "(%s %s %s)" args.(0) op args.(1) in
   [
     b "sin" f_f;
+    b "pow" ff_f;
+    b "fadd" ff_f ~c:(c_bop "+");
     b "fmax" ff_f;
+    b "fmin" ff_f;
     b "print_float" f_u ~c:(fun args -> Printf.sprintf "printf(\"%%f\\n\",%s)" args.(0));
+    b "frand" f_f ~c:(fun args -> Printf.sprintf "((float)rand()/(float)RAND_MAX*%s)" args.(0));
   ]
 
 let () =
@@ -60,7 +65,37 @@ let register_math () =
       let y = Lang.assoc "" 2 p in
       let x = Lang.to_float x in
       let y = Lang.to_float y in
-      Lang.float (max x y))
+      Lang.float (max x y));
+  add_builtin "math.min" ~cat:Math ~descr:"Min." ~extern:"fmin"
+    [
+      "",Lang.float_t,None,None;
+      "",Lang.float_t,None,None;
+    ]
+    Lang.float_t
+    (fun p ->
+      let x = Lang.assoc "" 1 p in
+      let y = Lang.assoc "" 2 p in
+      let x = Lang.to_float x in
+      let y = Lang.to_float y in
+      Lang.float (min x y));
+  add_builtin "math.pow" ~cat:Math ~descr:"Pow." ~extern:"pow"
+    [
+      "",Lang.float_t,None,None;
+      "",Lang.float_t,None,None;
+    ]
+    Lang.float_t
+    (fun p ->
+      let x = Lang.assoc "" 1 p in
+      let y = Lang.assoc "" 2 p in
+      let x = Lang.to_float x in
+      let y = Lang.to_float y in
+      Lang.float (x ** y));
+  add_builtin "math.random.float" ~cat:Math ~descr:"Random float." ~extern:"frand"
+    [ "",Lang.float_t,None,None ] Lang.float_t
+    (fun p ->
+      match (snd (List.hd p)).Lang.value with
+        | Lang.Float i -> Lang.float (Random.float i)
+        | _ -> assert false)
 
 let register_event () =
   Lang.add_builtin "event.channel" ~category:(string_of_category Control)

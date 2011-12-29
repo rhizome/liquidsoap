@@ -12,9 +12,9 @@ def saml.time.integrator (~periodic=false,x) =
     ans
 end
 
-def saml.time.now () = saml.time.integrator(1.) end
+def saml.time.now (freq=1.) = saml.time.integrator(freq) end
 
-def saml.time.frequencize (x, freq) =
+def saml.time.frequencize (x,freq) =
     period = freq * period
     x
 end
@@ -23,16 +23,16 @@ end
 
 saml.gen = [=]
 
-def saml.gen.sine() =
-    math.sin(2. * math.pi * saml.time.now())
+def saml.gen.sine(freq=1.) =
+    math.sin(2. * math.pi * saml.time.now(freq))
 end
 
-def saml.gen.saw() =
-    saml.time.now() mod 1.
+def saml.gen.saw(freq=1.) =
+    saml.time.now(freq) mod 1.
 end
 
-def saml.gen.square() =
-    x = saml.gen.saw()
+def saml.gen.square(freq=1.) =
+    x = saml.gen.saw(freq)
     if x < 0. then -1. else 1. end
 end
 
@@ -113,6 +113,10 @@ def saml.filter.prev (x) =
     y = !p
     p := x
     y
+end
+
+def saml.filter.clip (~min=-1.,~max=1.,x) =
+    math.min(max, math.max(min, x))
 end
 
 # First-order filters
