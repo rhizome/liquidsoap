@@ -125,8 +125,14 @@ let print_decls d =
   let d = List.map print_decl d in
   String.concat "\n" d
 
+(** Types of builtin ops. *)
+let builtin_ops = ref []
+
 (** Emit C code. *)
 module Emitter_C = struct
+  (** Emitters for builtin ops. *)
+  let builtin_ops_emitters = ref []
+
   module Env = struct
     type t =
         {
@@ -134,8 +140,6 @@ module Emitter_C = struct
           vars : (string * T.t) list;
           (** Variables already used (in order to avoid masking variables). *)
           used_vars : string list;
-          (** Operators along with their type. *)
-          ops : (op * (T.t list * T.t)) list;
           (** Variables to be renamed during emission. *)
           renamings : (string * string) list;
         }
@@ -150,20 +154,13 @@ module Emitter_C = struct
     let add_vars env v =
       { env with vars = v@env.vars; used_vars = (List.map fst v)@env.used_vars }
 
-    let create () =
-      let f_f = [T.Float], T.Float in
-      let ff_f = [T.Float; T.Float], T.Float in
-      let ff_b = [T.Float; T.Float], T.Bool in
-      let bb_b = [T.Bool; T.Bool], T.Bool in
+    let is_defined env v =
+      List.mem_assoc v env.vars
+
+    let create ?(vars=[]) () =
       {
-        vars = [];
+        vars = vars;
         used_vars = [];
-        ops = [
-          FAdd, ff_f; FSub, ff_f; FMul, ff_f; FDiv, ff_f; FMod, ff_f;
-          FEq, ff_b; FLt, ff_b; FGe, ff_b;
-          BAnd, bb_b; BOr, bb_b;
-          Call "sin", f_f; Call "fmax", ff_f;
-        ];
         renamings = [];
       }
 
@@ -172,6 +169,28 @@ module Emitter_C = struct
       List.assoc x env.renamings
     with
       | Not_found -> x
+
+  let op_type x =
+    let ot =
+      let ff_f = [T.Float; T.Float], T.Float in
+      let ff_b = [T.Float; T.Float], T.Bool in
+      let bb_b = [T.Bool; T.Bool], T.Bool in
+      [
+        FAdd, ff_f; FSub, ff_f; FMul, ff_f; FDiv, ff_f; FMod, ff_f;
+        FEq, ff_b; FLt, ff_b; FGe, ff_b;
+        BAnd, bb_b; BOr, bb_b;
+      ]
+    in
+    match x with
+      | Call x ->
+        let t = List.assoc x !builtin_ops in
+        (
+          match t with
+            | T.Arr (t1,t2) -> t1,t2
+            | _ -> assert false
+        )
+      | _ ->
+        List.assoc x ot
   end
 
   let rec map_last f = function
@@ -205,7 +224,7 @@ module Emitter_C = struct
       | Store _ -> T.Void
       | Op (op, _) ->
         (* Printf.printf "expr_type_op: %s\n%!" (print_op op); *)
-        snd (List.assoc op env.Env.ops)
+        snd (Env.op_type op)
       | Let _ -> T.Void
       | Field (r,x) ->
         let t =
@@ -401,15 +420,13 @@ module Emitter_C = struct
             | BAnd -> [return (Printf.sprintf "(%s && %s)" args.(0) args.(1))]
             | BOr -> [return (Printf.sprintf "(%s || %s)" args.(0) args.(1))]
             | Call f ->
-              (
-                match f with
-                  | "print_int" -> [return (Printf.sprintf "printf(\"%%d\\n\",%s)" args.(0))]
-                  | "print_float" -> [return (Printf.sprintf "printf(\"%%f\\n\",%s)" args.(0))]
-                  | _ ->
-                    let args = Array.to_list args in
-                    let args = String.concat ", " args in
-                    [return (Printf.sprintf "%s(%s)" f args)]
-              )
+              (* Printf.printf "call %s\n%!" f; *)
+              if Env.is_defined env f then
+                let args = Array.to_list args in
+                let args = String.concat ", " args in
+                [return (Printf.sprintf "%s(%s)" f args)]
+              else
+                [return ((List.assoc f !builtin_ops_emitters) args)]
         in
         let tmp_decl = List.map (fun (x,t) -> decl x t) !tmp_vars in
         env, tmp_decl @ !args_comp @ p
@@ -434,15 +451,16 @@ module Emitter_C = struct
     match decl with
       | Decl (proto, prog) ->
         let name, args, t = proto in
-        let env = Env.add_vars env args in
+        let env' = Env.add_vars env args in
         let args = List.map (fun (x,t) -> Printf.sprintf "%s %s" (emit_type t) x) args in
         let args = String.concat ", " args in
         let return = if t = T.Void then (fun s -> s) else (fun s -> "return " ^ s) in
-        let prog = snd (emit_prog ~return ~env prog) in
+        let prog = snd (emit_prog ~return ~env:env' prog) in
         (* let prog = List.map (fun s -> "  " ^ s) prog in *)
         let prog = String.concat "\n" prog in
         let prog = prog ^ ";" in
-        Printf.sprintf "inline %s %s(%s) {\n%s\n}" (emit_type t) name args prog
+        let env = Env.add_var env (name,t) in
+        env, Printf.sprintf "inline %s %s(%s) {\n%s\n}" (emit_type t) name args prog
       | Decl_cst (x,e) ->
         let t = expr_type ~env e in
         let _, e = emit_expr ~env e in
@@ -452,10 +470,13 @@ module Emitter_C = struct
             | [e] -> e
             | _ -> assert false
         in
-        Printf.sprintf "%s %s = %s;" (emit_type t) x e
-      | Decl_type (name, t) -> ignore (type_decl ~name (emit_type ~use_decls:false t)); ""
+        let env = Env.add_var env (x,t) in
+        env, Printf.sprintf "%s %s = %s;" (emit_type t) x e
+      | Decl_type (name, t) ->
+        ignore (type_decl ~name (emit_type ~use_decls:false t));
+        env, ""
 
-  let default_includes = ["stdlib.h"; "math.h"; "stdio.h"]
+  let default_includes = ["stdlib.h"; "math.h"; "stdio.h"; "ladspa.h"]
 
   (** Emit a list of includes. *)
   let emit_includes includes =
@@ -467,10 +488,17 @@ module Emitter_C = struct
     let td = List.map (fun (t,tn) -> Printf.sprintf "typedef %s %s;" t tn) !Env.type_decls in
     String.concat "\n\n" td
 
-  let emit_decls d =
+  let emit_decls ?(env=Env.create ()) d =
     Env.type_decls := [];
-    let env = Env.create () in
-    let d = List.map (emit_decl ~env) d in
+    let env = ref env in
+    let d =
+      List.map
+        (fun d ->
+          let e, d = emit_decl ~env:(!env) d in
+          env := e;
+          d
+        ) d
+    in
     let td = emit_type_decls () in
     let includes = emit_includes default_includes in
     String.concat "\n\n" (includes::td::d)
@@ -503,11 +531,9 @@ module Emitter_C = struct
     String.concat "\n\n" d
     *)
     Env.type_decls := [];
-    let env = Env.create () in
-    let d = List.map (emit_decl ~env) d in
-    let td = emit_type_decls () in
-    let includes = emit_includes default_includes in
-    let ans = String.concat "\n\n" (includes::td::d) ^ "\n\n"in
+    let env = Env.create ?vars:env () in
+    let d = emit_decls ~env d in
+    let ans = d ^ "\n\n" in
     let ans = ref ans in
     let add s = ans := !ans ^ s ^ "\n" in
     add (Printf.sprintf "#define STATE saml_state");

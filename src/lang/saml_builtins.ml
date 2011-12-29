@@ -1,6 +1,44 @@
 (** Builtin operations for SAML. *)
 
 module T = Lang_types
+module B = Saml_backend
+
+(** Operations necessary to define a builtin. *)
+type t = {
+  b_name : string;
+  b_type : B.T.t;
+  b_emit_c : string array -> string;
+}
+
+let builtins =
+  let f_f = B.T.Arr ([B.T.Float], B.T.Float) in
+  let ff_f = B.T.Arr ([B.T.Float; B.T.Float], B.T.Float) in
+  let f_u = B.T.Arr ([B.T.Float], B.T.Void) in
+  let b name =
+    let default_emit_c args =
+      let args = Array.to_list args in
+      let args = String.concat ", " args in
+      Printf.sprintf "%s(%s)" name args
+    in
+    fun ?(c=default_emit_c) typ ->
+      {
+        b_name = name;
+        b_type = typ;
+        b_emit_c = c;
+      }
+  in
+  [
+    b "sin" f_f;
+    b "fmax" ff_f;
+    b "print_float" f_u ~c:(fun args -> Printf.sprintf "printf(\"%%f\\n\",%s)" args.(0));
+  ]
+
+let () =
+  List.iter
+    (fun b ->
+      B.builtin_ops := (b.b_name, b.b_type) :: !B.builtin_ops;
+      B.Emitter_C.builtin_ops_emitters := (b.b_name, b.b_emit_c) :: !B.Emitter_C.builtin_ops_emitters
+    ) builtins
 
 open Lang_builtins
 
