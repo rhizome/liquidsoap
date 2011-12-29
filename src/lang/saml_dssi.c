@@ -33,11 +33,13 @@ const DSSI_Descriptor *dssi_descriptor(unsigned long index)
 }
 
 #define POLYPHONY 32
-#define SAML_PORT_OUTPUT 0
+#define SAML_PORT_OUTPUT_L 0
+#define SAML_PORT_OUTPUT_R 1
 
 typedef struct
 {
-  LADSPA_Data *output;
+  LADSPA_Data *output_l;
+  LADSPA_Data *output_r;
   /* Internal state of a voice. */
   STATE *state[POLYPHONY];
   /* Note played by a voice. */
@@ -67,8 +69,12 @@ static void SAML_connect_port(LADSPA_Handle instance, unsigned long port, LADSPA
   SAML_synth_t *h = (SAML_synth_t*)instance;
   switch(port)
     {
-    case SAML_PORT_OUTPUT:
-      h->output = data;
+    case SAML_PORT_OUTPUT_L:
+      h->output_l = data;
+      break;
+
+    case SAML_PORT_OUTPUT_R:
+      h->output_r = data;
       break;
     }
 }
@@ -178,10 +184,15 @@ static void SAML_run_synth(LADSPA_Handle instance, unsigned long sample_count, s
           event_pos++;
         }
 
-      h->output[pos] = 0.0f;
+      h->output_l[pos] = 0.0f;
+      h->output_r[pos] = 0.0f;
       for (n = 0; n < h->first_inactive; n++)
         if (SAML_synth_is_active(h->state[n]))
-          h->output[pos] += SAML_synth(h->state[n]);
+          {
+            LADSPA_Data s = SAML_synth(h->state[n]);
+            h->output_l[pos] += s;
+            h->output_r[pos] += s;
+          }
     }
 }
 
@@ -206,7 +217,7 @@ __attribute__((constructor)) void init()
       SAML_LADSPA_descriptor->Name = SAML_name;
       SAML_LADSPA_descriptor->Maker = "SAML/Liquidsoap";
       SAML_LADSPA_descriptor->Copyright = "(c)";
-      SAML_LADSPA_descriptor->PortCount = 1;
+      SAML_LADSPA_descriptor->PortCount = 2;
 
       port_descriptors = calloc(SAML_LADSPA_descriptor->PortCount, sizeof(LADSPA_PortDescriptor));
       SAML_LADSPA_descriptor->PortDescriptors = port_descriptors;
@@ -216,9 +227,12 @@ __attribute__((constructor)) void init()
       SAML_LADSPA_descriptor->PortNames = (const char**)port_names;
 
       /* Declare the ports. */
-      port_descriptors[SAML_PORT_OUTPUT] = LADSPA_PORT_OUTPUT | LADSPA_PORT_AUDIO;
-      port_names[SAML_PORT_OUTPUT] = "Output";
-      port_range_hints[SAML_PORT_OUTPUT].HintDescriptor = 0;
+      port_descriptors[SAML_PORT_OUTPUT_L] = LADSPA_PORT_OUTPUT | LADSPA_PORT_AUDIO;
+      port_names[SAML_PORT_OUTPUT_L] = "Left output";
+      port_range_hints[SAML_PORT_OUTPUT_L].HintDescriptor = 0;
+      port_descriptors[SAML_PORT_OUTPUT_R] = LADSPA_PORT_OUTPUT | LADSPA_PORT_AUDIO;
+      port_names[SAML_PORT_OUTPUT_R] = "Right output";
+      port_range_hints[SAML_PORT_OUTPUT_R].HintDescriptor = 0;
 
       SAML_LADSPA_descriptor->instantiate = SAML_instantiate;
       SAML_LADSPA_descriptor->connect_port = SAML_connect_port;
