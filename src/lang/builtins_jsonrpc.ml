@@ -127,13 +127,10 @@ let callbacks = Hashtbl.create 10
 
 let json_rpc req =
   try 
-    let fn = Hashtbl.find callbacks req.Jsonrpc.request_method in
-    `Result 
-      { Jsonrpc.
-         result_content = fn req.Jsonrpc.request_params;
-         result_id      = req.Jsonrpc.request_id }
+    let fn = Hashtbl.find callbacks req.Jsonrpc.methOd in
+    `Result (fn req.Jsonrpc.params)
   with 
-    | Not_found -> raise (Jsonrpc.Method_not_found req.Jsonrpc.request_id)
+    | Not_found -> raise (Jsonrpc.Method_not_found req.Jsonrpc.id)
 
 let () =
   let t = Lang.univ_t 1 in
