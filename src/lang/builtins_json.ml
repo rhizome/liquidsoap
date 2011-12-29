@@ -81,7 +81,7 @@ let () =
   Lang_builtins.add_builtin
    ~cat:Lang_builtins.String
    ~descr:"Parse a json string into a liquidsoap value."
-   "of_json"
+   "json.of_json"
    ["default", t, None, Some "Default value if string cannot \
                               be parsed.";
     "", Lang.string_t, None, None ] t

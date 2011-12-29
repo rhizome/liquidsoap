@@ -1686,7 +1686,7 @@ let to_json ~compact v =
      to_json_pp v
 
 let () =
-  add_builtin "json_of" ~cat:String
+  add_builtin "json.json_of" ~cat:String
     ~descr:"Convert a value to a json string." 
      ["compact",Lang.bool_t,Some (Lang.bool false),
       Some "Output compact text.";
