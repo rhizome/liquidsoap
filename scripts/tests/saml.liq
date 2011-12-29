@@ -139,7 +139,7 @@ def osc () =
 #        period = freq * period
 #        sin(2. * pi * now())
 #    end
-    def f(freq) = gen.saw(freq) end
+    def f (freq) = gen.saw(freq) end
     def f (note) =
         #event.handle(note.note_off, fun(_) -> event.emit(note.desactivate, ()))
         freq = note.freq

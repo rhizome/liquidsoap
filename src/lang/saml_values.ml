@@ -13,9 +13,9 @@ let builtin_prefix = "#saml_"
 let builtin_prefix_re = Str.regexp ("^"^builtin_prefix)
 let is_builtin_var x = Str.string_match builtin_prefix_re x 0
 
-let default_meta_vars = ["period"]
+let meta_vars = ["period"]
 
-let meta_vars = ref default_meta_vars
+let keep_vars = ref []
 
 let make_term ?t tm =
   let t =
@@ -160,7 +160,7 @@ and substs ?(pure=false) ss tm =
         let def = s l.def in
         let ss = List.remove_all_assoc l.var ss in
         let s = s ~ss in
-        let var, body = if not (List.mem l.var !meta_vars) then fresh_let (fv ss) l else l.var, l.body in
+        let var, body = if not (List.mem l.var (meta_vars @ !keep_vars)) then fresh_let (fv ss) l else l.var, l.body in
         let body = s body in
         let l = { l with var = var; def = def; body = body } in
         Let l
@@ -327,8 +327,7 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) ?(event_vars=[]) tm =
            will already be inlined. *)
         (* However, we have to keep the variables defined by lets that we want to
            keep, which are also in meta_vars. *)
-          (* TODO: clean this up, at least by separating meta_vars and keep_vars... *)
-          && not (List.mem l.var !meta_vars)
+          && not (List.mem l.var !keep_vars)
         then
           let env = (l.var,def)::env in
           let event_vars = (List.map fst sdef.events)@event_vars in
@@ -665,7 +664,7 @@ let rec emit_decl_prog tm =
     | _ -> [], emit_prog tm
 
 let emit name ?(keep_let=[]) ~env ~venv tm =
-  meta_vars := keep_let @ default_meta_vars;
+  keep_vars := keep_let;
   Printf.printf "emit: %s : %s\n\n%!" (V.print_term tm) (T.print tm.t);
   (* Inline the environment. *)
   let venv =
