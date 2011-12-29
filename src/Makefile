@@ -207,7 +207,8 @@ $(call conditional_compilation,synth,$(W_DSSI),synth/dssi_op.ml)
 builtins = \
   lang/lang_builtins.ml \
   lang/builtins_record.ml \
-	$(if $(W_YOJSON),lang/builtins_json.ml)
+	$(if $(W_YOJSON),lang/builtins_json.ml) \
+	$(if $(W_JSONRPC),lang/builtins_jsonrpc.ml)
 
 $(call conditional_compilation,builtins,$(W_LO),lang/builtins_lo.ml)
 $(call conditional_compilation,builtins,$(W_MAGIC),lang/builtins_magic.ml)
