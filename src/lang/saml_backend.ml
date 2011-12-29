@@ -476,7 +476,7 @@ module Emitter_C = struct
         ignore (type_decl ~name (emit_type ~use_decls:false t));
         env, ""
 
-  let default_includes = ["stdlib.h"; "math.h"; "stdio.h"; "ladspa.h"]
+  let default_includes = ["stdlib.h"; "math.h"; "stdio.h"]
 
   (** Emit a list of includes. *)
   let emit_includes includes =

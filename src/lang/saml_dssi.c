@@ -2,8 +2,10 @@
  * Begining of the DSSI general part *
  *************************************/
 
+#include <ladspa.h>
 #include <dssi.h>
 #include <stdio.h>
+#include <assert.h>
 
 static LADSPA_Descriptor *SAML_LADSPA_descriptor = NULL;
 static DSSI_Descriptor *SAML_DSSI_descriptor = NULL;
@@ -30,7 +32,7 @@ const DSSI_Descriptor *dssi_descriptor(unsigned long index)
     }
 }
 
-#define POLYPHONY 128
+#define POLYPHONY 32
 #define SAML_PORT_OUTPUT 0
 
 typedef struct
@@ -38,6 +40,10 @@ typedef struct
   LADSPA_Data *output;
   /* Internal state of a voice. */
   STATE *state[POLYPHONY];
+  /* Note played by a voice. */
+  unsigned long note[POLYPHONY];
+  /* First inactive voice. */
+  int first_inactive;
 } SAML_synth_t;
 
 /* Allocate the internal structures of the synth. */
@@ -51,6 +57,7 @@ static LADSPA_Handle SAML_instantiate(const LADSPA_Descriptor *descriptor, unsig
       h->state[i] = SAML_synth_alloc();
       h->state[i]->period = 1. / (float)sample_rate;
     }
+  h->first_inactive=0;
 
   return (LADSPA_Handle)h;
 }
@@ -72,7 +79,7 @@ static void SAML_activate(LADSPA_Handle instance)
   SAML_synth_t *h = (SAML_synth_t*)instance;
   int i;
 
-  for (i = 0; i < POLYPHONY; i++)
+  for (i = 0; i < h->first_inactive; i++)
     SAML_synth_reset(h->state[i]);
 }
 
@@ -82,7 +89,7 @@ void SAML_deactivate(LADSPA_Handle instance)
   SAML_synth_t *h = (SAML_synth_t*)instance;
   int i;
 
-  for (i = 0; i < POLYPHONY; i++)
+  for (i = 0; i < h->first_inactive; i++)
     SAML_synth_reset(h->state[i]);
 }
 
@@ -123,42 +130,58 @@ int SAML_get_midi_controller(LADSPA_Handle instance, unsigned long port)
 static void SAML_run_synth(LADSPA_Handle instance, unsigned long sample_count, snd_seq_event_t *events, unsigned long event_count)
 {
   SAML_synth_t *h = (SAML_synth_t*)instance;
-  unsigned long pos, event_pos, note;
+  unsigned long pos, event_pos, note, n;
 
   if (event_count > 0) {
-    printf("synth: we have %ld events\n", event_count);
+    //printf("synth: we have %ld events\n", event_count);
   }
+
+  /* Pack notes */
+  for (n = 0; n < h->first_inactive; n++)
+    if (!SAML_synth_is_active(h->state[n]))
+      {
+        STATE *tmp;
+        unsigned long l = h->first_inactive-1;
+        tmp = h->state[n];
+        h->state[n] = h->state[l];
+        h->state[l] = tmp;
+        h->note[n] = h->note[l];
+        h->first_inactive--;
+      }
 
   for (pos = 0, event_pos = 0; pos < sample_count; pos++)
     {
       while (event_pos < event_count && pos == events[event_pos].time.tick)
         {
-          printf("synth: event type %d\n", events[event_pos].type);
+          //printf("synth: event type %d\n", events[event_pos].type);
 
-          if (events[event_pos].type == SND_SEQ_EVENT_NOTEON)
+          if (events[event_pos].type == SND_SEQ_EVENT_NOTEON && h->first_inactive < POLYPHONY)
             {
               note = events[event_pos].data.note.note;
-              SAML_synth_reset(h->state[note]);
-              SAML_synth_set_velocity(h->state[note], (float)events[event_pos].data.note.velocity / 127.0f);
-              printf("note: %d\n", (int)note);
-              SAML_synth_set_freq(h->state[note], 440. * pow(2.,(note - 69.)/12.));
-              if (events[event_pos].data.note.velocity > 0)
-                SAML_synth_activate(h->state[note]);
+              n = h->first_inactive;
+              h->first_inactive++;
+              SAML_synth_reset(h->state[n]);
+              SAML_synth_set_velocity(h->state[n], (float)events[event_pos].data.note.velocity / 127.0f);
+              printf("note on : %ld (vel: %d)\n", note, events[event_pos].data.note.velocity);
+              h->note[n] = note;
+              SAML_synth_set_freq(h->state[n], 440. * pow(2.,(note - 69.)/12.));
+              SAML_synth_activate(h->state[n]);
             }
           else if (events[event_pos].type == SND_SEQ_EVENT_NOTEOFF)
             {
               note = events[event_pos].data.note.note;
-              SAML_synth_note_off(h->state[note]);
+              printf("note off: %ld\n", note);
+              for (n = 0; n < h->first_inactive; n++)
+                if (h->note[n] == note)
+                  SAML_synth_note_off(h->state[n]);
             }
           event_pos++;
         }
 
-      /* This is a crazy way to run a synths inner loop, I've just done it this
-         way so its really obvious whats going on. */
       h->output[pos] = 0.0f;
-      for (note = 0; note < POLYPHONY; note++)
-        if (SAML_synth_is_active(h->state[note]))
-          h->output[pos] += SAML_synth(h->state[note]);
+      for (n = 0; n < h->first_inactive; n++)
+        if (SAML_synth_is_active(h->state[n]))
+          h->output[pos] += SAML_synth(h->state[n]);
     }
 }
 
