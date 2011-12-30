@@ -48,6 +48,7 @@ def http.response(response) =
   callback
 end
 
+%ifdef json.rpc
 # Enable HTTP json-rpc handling on the given path.
 # @category Interaction
 # @param path Path to receive JSON-RPC requests.
@@ -82,3 +83,4 @@ def harbor.http.json_rpc(~headers=[],~mime=["application/json"], path) =
   end
   harbor.http.register(port=8005,path,json_rpc)
 end
+%endif

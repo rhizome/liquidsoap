@@ -1,3 +1,5 @@
+fallback = source.fallback
+switch = source.switch
 
 # Turn a source into an infaillible source.
 # by adding blank when the source is not available.
