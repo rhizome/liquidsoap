@@ -12,6 +12,9 @@ type t = V.term
 let builtin_prefix = "#saml_"
 let builtin_prefix_re = Str.regexp ("^"^builtin_prefix)
 let is_builtin_var x = Str.string_match builtin_prefix_re x 0
+let remove_builtin_prefix x =
+  let bpl = String.length builtin_prefix in
+  String.sub x bpl (String.length x - bpl)
 
 let meta_vars = ["period"]
 
@@ -278,6 +281,38 @@ type state =
 
 let empty_state = { refs = [] ; events = [] }
 
+(** Raised by "Liquidsoap" implementations of functions when no reduction is
+    possible. *)
+exception Cannot_reduce
+
+(** Functions to reduce builtins. *)
+let builtin_reducers = ref
+  [
+    "add",
+    (fun args ->
+      match args.(0).term, args.(1).term with
+        | Float x, Float y -> make_term (Float (x+.y))
+        | Float 0., _ -> args.(1)
+        | _, Float 0. -> args.(0)
+        | _ -> raise Cannot_reduce
+    );
+    "sub",
+    (fun args ->
+      match args.(0).term, args.(1).term with
+        | Float x, Float y -> make_term (Float (x-.y))
+        | _, Float 0. -> args.(0)
+        | _ -> raise Cannot_reduce
+    );
+    "mul",
+    (fun args ->
+      match args.(0).term, args.(1).term with
+        | Float x, Float y -> make_term (Float (x*.y))
+        | Float 1., _ -> args.(1)
+        | _, Float 1. -> args.(0)
+        | _ -> raise Cannot_reduce
+    )
+  ]
+
 (* Notice that it is important to mk at the end in order to preserve types. *)
 let rec reduce ?(env=[]) ?(bound_vars=[]) ?(event_vars=[]) tm =
   (* Printf.printf "reduce: %s\n%!" (V.print_term tm); *)
@@ -467,8 +502,21 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) ?(event_vars=[]) tm =
               let fv = List.fold_left (fun fv (_,v) -> (free_vars v)@fv) [] a in
               let var, body = fresh_let fv l in
               mk (Let { l with var = var ; body = aux body })
-            | Var _ ->
-              mk (App (f, a))
+            | Var x ->
+              (
+                try
+                  if is_builtin_var x then
+                    let x = remove_builtin_prefix x in
+                    let r = List.assoc x !builtin_reducers in
+                    let a = List.map (fun (l,v) -> assert (l = ""); v) a in
+                    let a = Array.of_list a in
+                    r a
+                  else
+                    mk (App (f, a))
+                with
+                  | Not_found
+                  | Cannot_reduce -> mk (App (f, a))
+              )
         in
         !s, (aux f).term
       | Event_channel l ->
@@ -575,10 +623,7 @@ let rec emit_prog tm =
         (* Printf.printf "emit_prog app: %s\n%!" (print_term (make_term x)); *)
         match x with
           | Var x when is_builtin_var x ->
-            let x =
-              let bpl = String.length builtin_prefix in
-              String.sub x bpl (String.length x - bpl)
-            in
+            let x = remove_builtin_prefix x in
             (
               match x with
                 | "if_then_else" ->

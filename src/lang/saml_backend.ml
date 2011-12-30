@@ -3,10 +3,6 @@
 
 open Utils.Stdlib
 
-(** Raised by "Liquidsoap" implementations of functions when no reduction is
-    possible. *)
-exception Cannot_reduce
-
 module T = struct
   (** A type. *)
   type t =
