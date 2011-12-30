@@ -110,6 +110,7 @@ correct('
   f([foo=1, bar="aabb"]) ignore(?(x.bar=1))');
 incorrect('def f(x) = y = [ x with foo=1 ] ignore(x.foo) y end x = f([foo="aabb"]) x.foo^""');
 correct('r = [f = fun(x)->x] f = fun(x)->x.f(2)+0 ignore(f(r)) ignore(r.f(""))');
+correct('def list.f(~x=list.hd) = () end ignore(list)');
 incorrect('
   def same =
     same = ref (fun (x,y) -> ()) ; f = !same ; same := fun(x,y)->f(y,x) ; !same
