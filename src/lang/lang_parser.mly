@@ -190,7 +190,7 @@
 %token <string> VARLPAR
 %token <string> VARLBRA
 %token <string> STRING
-%token <string * string list> RECORD_FIELD RECORD_FIELD_LPAR
+%token <string * string list> RECORD_FIELD RECORD_FIELD_LPAR RECORD_FIELD_LBRA
 %token <int> INT
 %token <float> FLOAT
 %token <bool> BOOL
@@ -347,8 +347,9 @@ expr:
   | RECORD_FIELD_LPAR app_list RPAR  { mk (App (deep_field $1,$2)) }
   | expr FIELD VARLPAR app_list RPAR { mk (App (mk (Field ($1, $3, None)), $4)) }
   | VARLBRA expr RBRA                { mk (App (mk ~pos:(1,1) (Var "_[_]"),
-                                           ["",$2;
-                                            "",mk ~pos:(1,1) (Var $1)])) }
+                                           ["",$2; "",mk ~pos:(1,1) (Var $1)])) }
+  | RECORD_FIELD_LBRA expr RBRA      { mk (App (mk ~pos:(1,1) (Var "_[_]"),
+                                           ["",$2; "",deep_field $1])) }
   | BEGIN exprs END                  { $2 }
   | FUN LPAR arglist RPAR YIELDS expr
                                      { mk_fun $3 $6 }
@@ -442,8 +443,9 @@ cexpr:
   | cexpr FIELD VARLPAR app_list RPAR
                                      { mk (App (mk (Field ($1, $3, None)), $4)) }
   | VARLBRA expr RBRA                { mk (App (mk ~pos:(1,1) (Var "_[_]"),
-                                           ["",$2;
-                                            "",mk ~pos:(1,1) (Var $1)])) }
+                                           ["",$2; "",mk ~pos:(1,1) (Var $1)])) }
+  | RECORD_FIELD_LBRA expr RBRA      { mk (App (mk ~pos:(1,1) (Var "_[_]"),
+                                           ["",$2; "",deep_field $1])) }
   | BEGIN exprs END                  { $2 }
   | FUN LPAR arglist RPAR YIELDS expr
                                      { mk_fun $3 $6 }
