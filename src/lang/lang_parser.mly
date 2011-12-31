@@ -50,16 +50,16 @@
 
   let deep_field ?opt (e,xx) =
     let rec aux e = function
-      | [] -> assert false
-      | x::[] -> mk (Field (e, x, opt))
-      | x::xx -> 
-          let opt = 
-            if opt <> None then
-              Some (mk (Record Lang_types.Fields.empty))
-            else
-              None
-          in
-          aux (mk (Field (e, x, opt))) xx
+      | [] -> e
+      | [x] -> mk (Field (e, x,opt))
+      | x::xx ->
+        let opt =
+          if opt <> None then
+            Some (mk (Record Lang_types.Fields.empty))
+          else
+            None
+        in
+        aux (mk (Field (e, x, opt))) xx
     in
     aux (mk (Var e)) xx
 
@@ -84,18 +84,12 @@
 
   let field tm = { rgen = [] ; rval = tm }
 
-  let rec replace_deep_field e xx v =
+  (** Replace (e.exx).xx with v. *)
+  let rec replace_deep_field e ?(exx=[]) xx v =
     match xx with
       | [] -> v
       | x::xx ->
-        (* The function is used here not to have the same physical e used
-           twice... Can you think of something nicer? *)
-        (* (fun (#) -> [# with x = v]) r *)
-        let en = "#" in
-        let ex = mk (Field (mk (Var en),x,None)) in
-        let f = mk (Replace_field(mk (Var en), x, field (replace_deep_field ex xx v))) in
-        let f = mk_fun ["",en,T.fresh_evar ~level:(-1) ~pos:None,None] f in
-          mk (App (f,["",e]))
+        mk (Replace_field(deep_field (e,exx), x, field (replace_deep_field e ~exx:(exx@[x]) xx v)))
 
   (** Time intervals *)
 
@@ -513,20 +507,20 @@ binding:
     }
   | RECORD_FIELD GETS expr {
       let e,xx = $1 in
-        (Doc.none (),[]),e,replace_deep_field (mk (Var e)) xx $3
+        (Doc.none (),[]),e,replace_deep_field e xx $3
     }
   | DEF VAR g exprs END {
       $1,$2,$4
   }
   | DEF RECORD_FIELD g exprs END {
       let e, xx = $2 in
-      let body = replace_deep_field (mk (Var e)) xx $4 in
+      let body = replace_deep_field e xx $4 in
         $1,e,body
     }
   | DEF var_fields_par arglist RPAR g exprs END {
       let var, fields = $2 in
       let arglist = $3 in
-      let body = replace_deep_field (mk (Var var)) fields (mk_fun arglist $6) in
+      let body = replace_deep_field var fields (mk_fun arglist $6) in
         $1,var,body
     }
 
