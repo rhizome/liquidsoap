@@ -62,20 +62,18 @@ let rec of_json t j =
          end
        end
     | `Assoc l ->
-        (* Try to convert the object to a list of pairs of strings
-         * This requires the target type to be [(string*string)],
-         * currently it won't work if it is [?T] which would be
-         * obtained with of_json(default=[],...). *)
-        let lt = Lang.of_list_t t in
-        let (t,t') = Lang.of_product_t lt in
-        ignore (Lang.string_t <: t) ;
-        let l =
-          List.map
-            (fun (x,y) -> Lang.product (Lang.string x)
-                                       (of_json t' y))
-            l
+        let rt = (Lang.of_record_t t).Lang_types.fields in
+        let r =
+          List.fold_left
+            (fun r (x,y) -> 
+              let ((_,t), opt) = Lang_types.Fields.find x rt in
+              if not opt then 
+                Lang_types.Fields.add x (of_json t y) r
+              else
+                r)
+            Lang_types.Fields.empty l
         in
-        Lang.list ~t:lt l
+        Lang.record r
     | _ -> failwith "could not parse JSON string."
 
 let () =
@@ -83,7 +81,7 @@ let () =
   Lang_builtins.add_builtin
    ~cat:Lang_builtins.String
    ~descr:"Parse a json string into a liquidsoap value."
-   "of_json"
+   "json.of_json"
    ["default", t, None, Some "Default value if string cannot \
                               be parsed.";
     "", Lang.string_t, None, None ] t

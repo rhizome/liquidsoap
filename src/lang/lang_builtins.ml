@@ -1608,27 +1608,9 @@ let rec to_json_compact v =
           else
             s
     | Lang.List l ->
-        (* Convert (string*'a) list to object *)
-        begin 
-         try
-          let t = v.Lang.t in
-          let t = Lang.of_list_t t in
-          let (t,_) = Lang.of_product_t t in
-          let compare = Lang_types.( <: ) in
-          ignore(compare t Lang.string_t);
-          let l = 
-            List.map (fun x ->
-                        let (x,y) = Lang.to_product x in
-                        Printf.sprintf "%s:%s" 
-                          (to_json_compact x) (to_json_compact y))
-                      l
-          in
-          Printf.sprintf "{%s}" (String.concat "," l)
-         with _ ->
-               Printf.sprintf "[%s]" 
-                (String.concat "," 
-                  (List.map to_json_compact l))
-        end
+         Printf.sprintf "[%s]" 
+           (String.concat "," 
+             (List.map to_json_compact l))
     | Lang.Record r ->
         let r = 
           Lang_types.Fields.fold 
@@ -1653,45 +1635,36 @@ let rec to_json_compact v =
 let rec to_json_pp f v =
   match v.Lang.value with
     | Lang.List l ->
-        (* Convert (string*'a) list to object *)
-        begin 
-         try
-          let t = v.Lang.t in
-          let t = Lang.of_list_t t in
-          let (t,_) = Lang.of_product_t t in
-            let compare = Lang_types.( <: ) in
-            ignore(compare t Lang.string_t);
-            let print f l = 
-              let len = List.length l in
-              let f pos x =
-                let (x,y) = Lang.to_product x in
-                if pos != len - 1 then
-                  Format.fprintf f "%a: %a,@;<1 0>" 
-                    to_json_pp x to_json_pp y
-                else
-                  Format.fprintf f "%a: %a" 
-                    to_json_pp x to_json_pp y ;
+        let print f l =
+          let len = List.length l in
+          let f pos x =
+            if pos < len - 1 then
+              Format.fprintf f "%a,@;<1 0>"
+                to_json_pp x
+              else
+                Format.fprintf f "%a"
+                  to_json_pp x ;
                 pos+1
-              in
-              ignore(List.fold_left f 0 l)
-            in
-            Format.fprintf f "@[{@;<1 1>@[%a@]@;<1 0>}@]" print l
-         with _ ->
-               let print f l =
-                 let len = List.length l in
-                 let f pos x =
-                   if pos < len -1 then
-                     Format.fprintf f "%a,@;<1 0>"
-                       to_json_pp x
-                   else
-                     Format.fprintf f "%a"
-                        to_json_pp x ;
-                 pos+1
-                 in
-                 ignore(List.fold_left f 0 l)
-               in
-               Format.fprintf f "@[[@;<1 1>@[%a@]@;<1 0>]@]" print l
-        end
+          in
+          ignore(List.fold_left f 0 l)
+        in
+        Format.fprintf f "@[[@;<1 1>@[%a@]@;<1 0>]@]" print l
+    | Lang.Record r ->
+        let r = Lang_types.list_of_fields r in
+        let print f r =
+          let len = List.length r in
+          let f pos (x,y) =
+            if pos < len - 1 then
+              Format.fprintf f "%S: %a,@;<1 0>"
+                x to_json_pp y.Lang.v_value
+              else
+                Format.fprintf f "%S: %a"
+                  x to_json_pp y.Lang.v_value ;
+                pos+1
+          in
+          ignore(List.fold_left f 0 r)
+        in
+        Format.fprintf f "@[{@;<1 1>@[%a@]@;<1 0>}@]" print r
     | Lang.Product (p,q) -> 
        Format.fprintf f
          "@[[@;<1 1>@[%a,@;<1 0>%a@]@;<1 0>]@]"
@@ -1716,7 +1689,7 @@ let to_json ~compact v =
      to_json_pp v
 
 let () =
-  add_builtin "json_of" ~cat:String
+  add_builtin "json.json_of" ~cat:String
     ~descr:"Convert a value to a json string." 
      ["compact",Lang.bool_t,Some (Lang.bool false),
       Some "Output compact text.";

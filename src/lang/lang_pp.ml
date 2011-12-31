@@ -343,6 +343,7 @@ let strip_newlines tokenizer =
       | Some (Lang_parser.RECORD_FIELD var as v) ->
           begin match tokenizer lexbuf with
             | Lang_parser.LPAR -> state := None ; Lang_parser.RECORD_FIELD_LPAR var
+            | Lang_parser.LBRA -> state := None ; Lang_parser.RECORD_FIELD_LBRA var
             | Lang_parser.PP_ENDL -> state := None ; v
             | x -> state := Some x ; v
           end

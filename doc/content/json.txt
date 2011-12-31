@@ -11,16 +11,15 @@ The format is the following :
 * @23 : int@ -> @23@
 * @2.0 : float@ -> @2.0@
 * @[2,3,4] : [int]@ -> @[2,3,4]@
-* @[("f",1),("b",4)] : [(string*int)]@ -> @{ "f": 1, "b": 4 }@
+* @[foo=3, bar="aabb"] : [foo: int, bar : string]@ -> @{ "foo": 1, "bar": "aabb" }@
 * @("foo",123) : string*int@ -> @[ "foo", 123 ]@
 * @s : source@ -> @"<source>"@
 * @r : ref(int)@ -> @{ "reference":4 }@
 * @%mp3 : format(...)@ -> @"%mp3(stereo,bitrate=128,samplerate=44100)"@
 * @r : request(...)@ -> @"<request>"@
 * @f : (...)->_@ -> @"<fun>"@
-The two particular cases are:
-* Products are exported as lists.
-* Lists of type @[(string*'a)]@ are exported as objects of the form @{"key": value}@.
+
+The only particular case is that products are exported as lists.
 
 Output format is pretty printed by default. A compact output can
 be obtained by using the optional argument: @compact=true@.
@@ -41,7 +40,7 @@ requests and functions:
 * @23@ -> @23 : int@
 * @2.0@ -> @2.0 : float@
 * @[2,3,4]@ -> @[2,3,4] : int@
-* @{"f": 1, "b": 4}@ -> @[("f",1),("b",4)] : [(string*int)]@
+* @{"foo": 1, "bar": "aabb"}@ -> @[foo=1, bar=4] : [foo: int, bar : string]@
 * @[ "foo", 123 ]@ -> @("foo",123) : string*int@
 
 The JSON standards specify that a proper JSON payload can only be an array or an

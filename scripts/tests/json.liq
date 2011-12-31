@@ -14,6 +14,7 @@ test((1,"foo"), (2,"bar"))
 test([("foo",(1,"bar"))], [("gni",(2,"boo"))])
 test([(1,[("fr","bar")])], [(2,[("en","foo")])])
 test([("ping",())], [("pong",())])
+test([foo=1, bar="aabb"], [foo=2, bar="ccdd"])
 # More.. ?
 
 if !success then 

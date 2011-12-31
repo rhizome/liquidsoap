@@ -21,9 +21,8 @@ def register_flow(~server="",~user="default",~password="default",
   server =
     if server == "" then
       server = http.get("http://savonet.sourceforge.net/flows_server")
-      html_status = snd(fst(fst(fst(server))))
-      if html_status == 200 then
-        snd(server)
+      if server.code == 200 then
+        server.data
       else
         # If sf is down, we use the hardcoded server
         "http://savonet.rastageeks.org/liqflows.py"
@@ -64,19 +63,11 @@ def register_flow(~server="",~user="default",~password="default",
     url = "#{server}?cmd=#{cmd}&#{params}"
 
     # TODO: do something with errors!
-    answer = http.get(url)
-    x = fst(answer)
-    status = fst(x)
-    y = fst(status)
-    protocol = fst(y)
-    code = snd(y)
-    desc = snd(status)
-    headers = snd(x)
-    data = snd(answer)
-    log(level=4,"Response status: #{protocol} #{code} #{desc}")
+    get = http.get(url)
+    log(level=4,"Response status: #{get.protocol} #{get.code} #{get.status}")
     log(level=4,"Response headers:")
-    list.iter(log_arg,headers)
-    log(level=4,"Response content: #{data}")
+    list.iter(log_arg,get.headers)
+    log(level=4,"Response content: #{get.data}")
   end
 
   # Register radio

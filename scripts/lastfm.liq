@@ -1,6 +1,6 @@
 %ifdef input.lastfm
-lastfm = record.empty
-librefm = record.empty
+lastfm = [=]
+librefm = [=]
 
 # Utility to compose last.fm URIs.
 # @category String
