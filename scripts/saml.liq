@@ -83,7 +83,7 @@ saml.env = [=]
 
 #c = event.channel()
 
-def adsr (~a=0.05,~d=0.02,~s=0.8,~r=0.01,~note_off=event.channel(),~desactivate=event.channel()) =
+def saml.env.adsr (~a=0.05,~d=0.02,~s=0.8,~r=0.01,~note_off=event.channel(),~desactivate=event.channel()) =
     t = saml.time.now()
     rt = ref (-1.)
     event.handle(note_off, fun(_)-> rt := t)
@@ -101,8 +101,6 @@ def adsr (~a=0.05,~d=0.02,~s=0.8,~r=0.01,~note_off=event.channel(),~desactivate=
         s
     end end end
 end
-
-saml.env.adsr = adsr
 
 # Filters
 
