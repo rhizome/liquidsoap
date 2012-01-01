@@ -121,5 +121,9 @@ incorrect('
 RECURSION:
 section("RECURSION");
 correct('def rec f(n) = if n >= 0 then print(n) f(n-1) end end f(5)');
+incorrect('def f(n) = f(n) end ignore(f)');
+correct('def rec f(n) = f(n) end ignore(f)');
+incorrect('def rec f(n) = ignore(n+1) f("a") end ignore(f)');
+incorrect('def rec l() = [l()] end ignore(l)');
 
 print "Everything's good!\n" ;
