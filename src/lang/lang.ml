@@ -524,7 +524,7 @@ let iter_sources f v =
         (* If it's locally bound it won't be in [env]. *)
         (* TODO since inner-bound variables don't mask outer ones in [env],
          *   we are actually checking values that may be out of reach. *)
-        begin try iter_value (snd (List.assoc v env)) with Not_found -> () end
+        begin try iter_value (snd (Lazy.force_val (List.assoc v env))) with Not_found -> () end
     | Term.App (a,l) ->
         iter_term env a ;
         List.iter (fun (_,v) -> iter_term env v) l
@@ -849,7 +849,8 @@ let eval s =
       Clock.collect_after
         (fun () ->
            Term.check ~ignored:false expr ;
-           Some (Term.eval ~env:Term.builtins#get_all expr))
+           let env = Term.builtins_env () in
+           Some (Term.eval ~env expr))
   with e ->
     Printf.eprintf
       "Evaluating %S failed: %s!"

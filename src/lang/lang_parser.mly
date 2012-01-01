@@ -200,7 +200,7 @@
 %token WAV VOAACENC AACPLUS MP3 MP3_VBR MP3_ABR EXTERNAL
 %token EOF
 %token FIELD WITH OPEN
-%token BEGIN END GETS TILD
+%token BEGIN END GETS TILD REC
 %token <Doc.item * (string*string) list> DEF
 %token IF THEN ELSE ELSIF
 %token LPAR RPAR COMMA SEQ SEQSEQ COLON QMARK
@@ -250,6 +250,7 @@ interactive:
 
 s: | {} | SEQ  {}
 g: | {} | GETS {}
+r: | { false } | REC { true }
 
 /* We have expr and cexpr, the latter stands for concatenable expressions,
  * and essentially cannot start with the unary MINUS. They are useful
@@ -268,16 +269,19 @@ exprs:
   | expr s                   { $1 }
   | expr cexprs              { mk (Seq ($1,$2)) }
   | expr SEQ exprs           { mk (Seq ($1,$3)) }
-  | binding s                { let doc,name,def = $1 in
+  | binding s                { let doc,recursive,name,def = $1 in
                                  mk (Let { doc=doc ; var=name ;
+                                           recursive = recursive ;
                                            gen = [] ; def=def ;
                                            body = mk Unit }) }
-  | binding cexprs           { let doc,name,def = $1 in
+  | binding cexprs           { let doc,recursive,name,def = $1 in
                                  mk (Let { doc=doc ; var=name ;
+                                           recursive = recursive ;
                                            gen = [] ; def=def ;
                                            body = $2 }) }
-  | binding SEQ exprs        { let doc,name,def = $1 in
+  | binding SEQ exprs        { let doc,recursive,name,def = $1 in
                                  mk (Let { doc=doc ; var=name ;
+                                           recursive = recursive ;
                                            gen = [] ; def=def ;
                                            body = $3 }) }
   | OPEN LPAR expr RPAR exprs { mk (Open ($3,$5)) }
@@ -286,16 +290,19 @@ cexprs:
   | cexpr s                  { $1 }
   | cexpr cexprs             { mk (Seq ($1,$2)) }
   | cexpr SEQ exprs          { mk (Seq ($1,$3)) }
-  | binding s                { let doc,name,def = $1 in
+  | binding s                { let doc,recursive,name,def = $1 in
                                  mk (Let { doc=doc ; var=name ;
+                                           recursive = recursive ;
                                            gen = [] ; def=def ;
                                            body = mk Unit }) }
-  | binding cexprs           { let doc,name,def = $1 in
+  | binding cexprs           { let doc,recursive,name,def = $1 in
                                  mk (Let { doc=doc ; var=name ;
+                                           recursive = recursive ;
                                            gen = [] ; def=def ;
                                            body = $2 }) }
-  | binding SEQ exprs        { let doc,name,def = $1 in
+  | binding SEQ exprs        { let doc,recursive,name,def = $1 in
                                  mk (Let { doc=doc ; var=name ;
+                                           recursive = recursive ;
                                            gen = [] ; def=def ;
                                            body = $3 }) }
   | OPEN LPAR expr RPAR exprs { mk (Open ($3,$5)) }
@@ -505,25 +512,25 @@ app_list:
 
 binding:
   | VAR GETS expr {
-      (Doc.none (),[]),$1,$3
+      (Doc.none (),[]),false,$1,$3
     }
   | RECORD_FIELD GETS expr {
       let e,xx = $1 in
-        (Doc.none (),[]),e,replace_deep_field e xx $3
+        (Doc.none (),[]),false,e,replace_deep_field e xx $3
     }
   | DEF VAR g exprs END {
-      $1,$2,$4
+      $1,false,$2,$4
   }
   | DEF RECORD_FIELD g exprs END {
       let e, xx = $2 in
       let body = replace_deep_field e xx $4 in
-        $1,e,body
+        $1,false,e,body
     }
-  | DEF var_fields_par arglist RPAR g exprs END {
-      let var, fields = $2 in
-      let arglist = $3 in
-      let body = replace_deep_field var fields (mk_fun arglist $6) in
-        $1,var,body
+  | DEF r var_fields_par arglist RPAR g exprs END {
+      let var, fields = $3 in
+      let arglist = $4 in
+      let body = replace_deep_field var fields (mk_fun arglist $7) in
+        $1,$2,var,body
     }
 
 var_fields_par:

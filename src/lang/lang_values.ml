@@ -120,6 +120,7 @@ module Vars = Set.Make(String)
 type term = { mutable t : T.t ; term : in_term }
 and let_t = {
   doc : Doc.item * (string*string) list ;
+  recursive : bool ;
   var : string ;
   mutable gen : (int*T.constraints) list ;
   def : term ;
@@ -231,8 +232,10 @@ let rec free_vars tm = match tm.term with
   | Fun (fv,_,_) ->
       fv
   | Let l ->
+    let def = free_vars l.def in
+    let def = if l.recursive then Vars.remove l.var def else def in
       Vars.union
-        (free_vars l.def)
+        def
         (Vars.remove l.var (free_vars l.body))
 
 let free_vars ?bound body =
@@ -310,6 +313,7 @@ let rec check_unused ~lib tm =
            * for the ones they masked. *)
           Vars.union masked v
     | Let { var = s ; def = def ; body = body } ->
+        (* TODO: is this correct for recursive let? *)
         let v = check v def in
         let mask = Vars.mem s v in
         let v = Vars.add s v in
@@ -447,6 +451,7 @@ struct
   type value = { mutable t : T.t ; value : in_value }
   and gvalue = { v_gen : T.cvar list ; v_value : value }
   and full_env = (string * (T.cvar list * value)) list
+  and lazy_full_env = (string * (T.cvar list * value) Lazy.t) list
   and in_value =
     | Unit
     | Bool    of bool
@@ -464,7 +469,7 @@ struct
       * to the function. Next parameters will be inserted between that
       * and the second env which is part of the closure. *)
     | Fun     of (string * string * value option) list *
-                 full_env * full_env * term
+                 full_env * lazy_full_env * term
     (** For a foreign function only the arguments are visible,
       * the closure doesn't capture anything in the environment. *)
     | FFI     of ffi
@@ -522,6 +527,16 @@ struct
 
   let map_env f env = List.map (fun (s,(g,v)) -> s, (g, f v)) env
 
+  let map_lazy_env f env =
+    List.map
+      (fun (s,v) -> s,
+        if Lazy.lazy_is_val v then
+          let g, v = Lazy.force_val v in
+          lazy (g, f v)
+        else
+          lazy (let g,v = Lazy.force_val v in g, f v)
+      ) env
+
   let tm_map_types = map_types
 
   (** Map a function on all types occurring in a value. *)
@@ -551,7 +566,8 @@ struct
             value =
               Fun (List.map aux p,
                    map_env (map_types f gen) applied,
-                   map_env (map_types f gen) env,
+                   (* TODO: is this delayed map alright? *)
+                   map_lazy_env (map_types f gen) env,
                    tm_map_types f gen tm) }
     | FFI ffi ->
         let aux = function
@@ -587,6 +603,10 @@ end
 
 let builtins : (T.cvar list * V.value) Plug.plug
   = Plug.create ~duplicates:false ~doc:"scripting values" "scripting values"
+
+let builtins_env () =
+  let env = builtins#get_all in
+  List.map (fun (x,v) -> x, Lazy.lazy_from_val v) env
 
 (** {1 Generalization}
   *
@@ -875,7 +895,17 @@ let rec check ?(print_toplevel=false) ~level ~env e =
           Printf.eprintf "Instantiate %s[%d] : %s becomes %s\n%!"
             var (T.deref e.t).T.level (T.print orig) (T.print e.t)
   | Let ({gen=gen; var=name; def=def; body=body} as l) ->
-      check ~level:level ~env def ;
+      let defenv =
+        if l.recursive then
+          let v = T.fresh_evar ~level ~pos in
+          let s = T.filter_vars (fun _ -> true) v in
+          (* s is 'a.'a *)
+          let s = s,v in
+          (name,s)::env
+        else
+          env
+      in
+      check ~level:level ~env:defenv def ;
       let scheme = generalize def in
       let env = (name,scheme)::env in
         l.gen <- fst scheme ;
@@ -960,7 +990,7 @@ let instantiate ~generalized def =
       def
 
 let lookup env var ty =
-  let generalized,def = List.assoc var env in
+  let generalized,def = Lazy.force_val (List.assoc var env) in
   let v = instantiate ~generalized def in
     if debug then
       Printf.eprintf
@@ -977,6 +1007,7 @@ let lookup env var ty =
         (T.print v.V.t) ;
     v
 
+(* The environment has to be lazy because of recursion. *)
 let rec eval ~env tm =
   let mk v = { V.t = tm.t ; V.value = v } in
     match tm.term with
@@ -1044,7 +1075,7 @@ let rec eval ~env tm =
             | _ -> assert false
         in
         let g x = fst (fst (T.Fields.find x rtf)) in
-        let fields = T.Fields.fold (fun x v l -> (x,(g x,v.V.v_value))::l) fields [] in
+        let fields = T.Fields.fold (fun x v l -> (x,Lazy.lazy_from_val (g x,v.V.v_value))::l) fields [] in
         let env = fields@env in
         eval ~env v
       | Ref v -> mk (V.Ref (ref (eval ~env v)))
@@ -1060,12 +1091,21 @@ let rec eval ~env tm =
                 mk V.Unit
             | _ -> assert false
           end
-      | Let {gen=generalized;var=x;def=v;body=b} ->
+      | Let ({gen=generalized;var=x;def=v;body=b} as l) ->
+          let venv =
+            if l.recursive then
+              let e = env in
+              let rec env = (x,lazy (generalized, eval ~env v))::e in
+              env
+            else
+              env
+          in
           (* It should be the case that generalizable variables don't
            * get instantiated in any way when evaluating the definition.
            * But we don't double-check it. *)
-          let v = eval ~env v in
-          eval ~env:((x,(generalized,v))::env) b
+          let v = eval ~env:venv v in
+          let env = (x, lazy (generalized,v))::env in
+          eval ~env b
       | Fun (fv,p,body) ->
           (* Unlike OCaml we always evaluate default values,
            * and we do that early.
@@ -1077,7 +1117,7 @@ let rec eval ~env tm =
               p
           in
           let env = List.filter (fun (x,_) -> Vars.mem x fv) env in
-            mk (V.Fun (p,[],env,body))
+          mk (V.Fun (p,[],env,body))
       | Var var ->
           lookup env var tm.t
       | Seq (a,b) ->
@@ -1097,7 +1137,11 @@ and apply ~t f l =
     match f.V.value with
       | V.Fun (p,pe,e,body) ->
           p,pe,
-          (fun pe _ -> eval ~env:(List.rev_append pe e) body),
+          (fun pe _ ->
+            (* TODO: we should do something more efficient. *)
+            let pe = List.map (fun (x,v) -> x, Lazy.lazy_from_val v) pe in
+            let env = List.rev_append pe e in
+            eval ~env body),
           (fun p pe -> mk (V.Fun (p,pe,e,body)))
       | V.FFI ffi ->
           ffi.V.ffi_args,ffi.V.ffi_applied,
@@ -1198,9 +1242,19 @@ let rec eval_toplevel ?(interactive=false) t =
   match t.term with
     | Let {doc=comment;
            gen=generalized;
+           recursive=recursive;
            var=name;def=def;body=body} ->
-        let env = builtins#get_all in
-        let def = eval ~env def in
+        let env = builtins_env () in
+        (* TODO: factorize this with eval *)
+        let defenv =
+          if recursive then
+            let e = env in
+            let rec env = (name, lazy (generalized, eval ~env def))::e in
+            env
+          else
+            env
+        in
+        let def = eval ~env:defenv def in
           toplevel_add comment name ~generalized def ;
           if debug then
             Printf.eprintf "Added toplevel %s : %s\n%!"
@@ -1217,6 +1271,7 @@ let rec eval_toplevel ?(interactive=false) t =
              if v.V.t.T.pos = None then { v with V.t = a.t } else v) ;
         eval_toplevel ~interactive b
     | _ ->
+        let env = builtins_env () in
         if interactive && t.term <> Unit then
           (* A special case when evaluating an expression: we display
            * a fake generalized type, because metavariables can be confusing.
@@ -1225,10 +1280,10 @@ let rec eval_toplevel ?(interactive=false) t =
            * TODO this may be silly: types attached to terms are already
            *   instantiated (eg. for variables) why do we re-instantiate? *)
           let scheme = generalize t in
-          let v = eval ~env:builtins#get_all t in
+          let v = eval ~env t in
             Format.printf "- : %a = %s@."
               T.pp_scheme scheme
               (V.print_value v) ;
             v
         else
-          eval ~env:builtins#get_all t
+          eval ~env t

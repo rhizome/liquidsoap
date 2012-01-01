@@ -122,6 +122,7 @@ rule token = parse
   | eof { EOF }
 
   | "def"    { PP_DEF }
+  | "rec"    { REC }
   | "fun"    { FUN }
   | "="      { GETS }
   | "end"    { END }

@@ -28,7 +28,7 @@ sub correct {
 }
 
 # Skip all tests but records while developing them.
-goto RECORDS;
+goto RECURSION;
 
 section("BASIC");
 incorrect('[1]==["1"]');
@@ -117,5 +117,9 @@ incorrect('
   end
   def f(r) same(r,[r with foo=1]) end
   f([=])');
+
+RECURSION:
+section("RECURSION");
+correct('def rec f(n) = if n >= 0 then print(n) f(n-1) end end f(5)');
 
 print "Everything's good!\n" ;

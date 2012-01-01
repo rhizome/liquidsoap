@@ -30,6 +30,7 @@ type t = Lang_types.t
 (** A typed value. *)
 type value = { mutable t : t ; value : in_value }
 and full_env = (string * ((int*Lang_types.constraints) list * value)) list
+and lazy_full_env = (string * ((int*Lang_types.constraints) list * value) Lazy.t) list
 and gvalue = { v_gen : Lang_types.cvar list ; v_value : value }
 and in_value =
   | Unit
@@ -45,7 +46,7 @@ and in_value =
   | Product of value * value
   | Ref     of value ref
   | Fun     of (string * string * value option) list *
-               full_env * full_env * Lang_values.term
+               full_env * lazy_full_env * Lang_values.term
   | FFI     of ffi
 and ffi =
     {
