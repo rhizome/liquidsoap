@@ -518,13 +518,13 @@ binding:
       let e,xx = $1 in
         (Doc.none (),[]),false,e,replace_deep_field e xx $3
     }
-  | DEF VAR g exprs END {
-      $1,false,$2,$4
+  | DEF r VAR g exprs END {
+      $1,$2,$3,$5
   }
-  | DEF RECORD_FIELD g exprs END {
-      let e, xx = $2 in
-      let body = replace_deep_field e xx $4 in
-        $1,false,e,body
+  | DEF r RECORD_FIELD g exprs END {
+      let e, xx = $3 in
+      let body = replace_deep_field e xx $5 in
+        $1,$2,e,body
     }
   | DEF r var_fields_par arglist RPAR g exprs END {
       let var, fields = $3 in
