@@ -473,31 +473,42 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) ?(event_vars=[]) tm =
           (* Printf.printf "aux app: %s\n\n%!" (print_term f); *)
           match f.term with
             | Fun (vars, args, v) ->
-              let args = List.map (fun (l,x,t,v) -> l,(x,t,v)) args in
-              let args = ref args in
-              let v = ref v in
-              let reduce_args a =
-                List.iter
-                  (fun (l,va) ->
-                    let x,_,_ = List.assoc l !args in
-                    args := List.remove_assoc l !args;
-                    v := subst x va !v
-                  ) a
-              in
-              reduce_args a;
-              let args = List.map (fun (l,(x,t,v)) -> l,x,t,v) !args in
-              if args = [] then
-                let sv, v = reduce !v in
-                s := merge sv !s;
-                v
-              else if List.for_all (fun (_,_,_,v) -> v <> None) args then
-                let a = List.map (fun (l,_,_,v) -> l, Utils.get_some v) args in
-                reduce_args a;
-                let sv, v = reduce !v in
-                s := merge sv !s;
-                v
-              else
-                mk (Fun (vars, args, !v))
+              (
+                match a with
+                  | (l,va)::a ->
+                    (* TODO: avoid those useless conversions on args *)
+                    let args = List.map (fun (l,x,t,v) -> l,(x,t,v)) args in
+                    let x,_,_ = List.assoc l args in
+                    let args = List.remove_assoc l args in
+                    let args = List.map (fun (l,(x,t,v)) -> l,x,t,v) args in
+                    (* TODO: The type f.t is not correct. Does it really matter? *)
+                    let body = mk (App (make_term ~t:f.t (Fun (vars, args, v)), a)) in
+                    let l =
+                      {
+                        doc = Doc.none (), [];
+                        var = x;
+                        gen = [];
+                        def = va;
+                        body = body;
+                      }
+                    in
+                    (* TODO: one reduce should be enough for multiple arguments... *)
+                    let sv, v = reduce (mk (Let l)) in
+                    s := merge sv !s;
+                    v
+                  | [] ->
+                    if args = [] then
+                      let sv, v = reduce v in
+                      s := merge sv !s;
+                      v
+                    else if List.for_all (fun (_,_,_,v) -> v <> None) args then
+                      let a = List.map (fun (l,_,_,v) -> l, Utils.get_some v) args in
+                      let sv, v = reduce (mk (App (f, a))) in
+                      s := merge sv !s;
+                      v
+                    else
+                      mk (Fun (vars, args, v))
+              )
             | Let l ->
               let fv = List.fold_left (fun fv (_,v) -> (free_vars v)@fv) [] a in
               let var, body = fresh_let fv l in

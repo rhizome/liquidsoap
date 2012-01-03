@@ -36,6 +36,15 @@ def saml.gen.square(freq=1.) =
     if x < 0. then -1. else 1. end
 end
 
+def saml.gen.noise() =
+    math.random.float(2.) - 1.
+end
+
+#def saml.gen.width(width) =
+#    freq = freq
+#    x = saml.gen.saw(freq)
+#end
+
 def saml.gen.seq (a,b) =
     first = ref true
     def on_eot (t) =

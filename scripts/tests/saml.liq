@@ -142,7 +142,7 @@ def f () =
     event.emit(c,())
     1.
 end
-saml.emit.generator.c(f())
+#saml.emit.generator.c(f())
 
 def osc () =
 #    def f (freq) = sin(2. * pi * freq * now()) end
@@ -155,18 +155,20 @@ def osc () =
     def f (note) =
         #event.handle(note.note_off, fun(_) -> event.emit(note.desactivate, ()))
         freq = note.freq
+        freq = freq + gen.noise()
         #freq = freq*(1.+gen.sine(5.)/200. * pow(10.,now()*10.)/10.)
-        #freq = freq*(1.+gen.sine(5.)/200.)
+        freq = freq*(1.+gen.sine(5.)/200.)
         #r = 200./freq
         #freq = freq+(random.float(r)-r/2.)*4.
         x = env.adsr(a=0.005, d=0.001, r=0.05, note_off=note.note_off, desactivate=note.desactivate) * f(freq) / 5.
         x = x + gen.sine(note.freq) / 15.
+        #x = x + env.adsr(a=0.01,d=0.01,s=0.005) * gen.noise() / 10.
         x = filter.fo.low_pass(env.adsr(a=0.005, d=0.01, s=0.5) * 10000., x)
         x
     end
     gen.voice(f)
 end
-#saml.emit.generator.dssi.c(osc())
+saml.emit.generator.dssi.c(osc())
 
 #saml.emit.generator.c(osc().main)
 
