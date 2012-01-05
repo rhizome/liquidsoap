@@ -100,7 +100,11 @@ let rec print_expr = function
     let args = List.map print_prog args in
     let args = String.concat "," args in
     Printf.sprintf "%s(%s)" (print_op op) args
-  | If (p,p1,p2) -> Printf.sprintf "if (%s) then (%s) else (%s)" (print_prog p) (print_prog p1) (print_prog p2)
+  | If (p,p1,p2) ->
+    if p2 = [] then
+      Printf.sprintf "if (%s) then (%s)" (print_prog p) (print_prog p1)
+    else
+      Printf.sprintf "if (%s) then (%s) else (%s)" (print_prog p) (print_prog p1) (print_prog p2)
   | Null t -> Printf.sprintf "null{%s}" (T.print t)
 
 and print_prog p =
@@ -301,6 +305,7 @@ module Emitter_C = struct
       incr n;
       Printf.sprintf "saml_tmp%d" !n
 
+  (* used_vars should be propagated everwhere as done in the let case *)
   let rec emit_expr ?(return=fun s->s) ~env e =
     (* Printf.printf "emit_expr: %s\n%!" (print_expr e); *)
     let decl x t = Printf.sprintf "%s %s;" (emit_type t) x in
@@ -368,15 +373,25 @@ module Emitter_C = struct
         let _, p = emit_prog ~return ~env rr in
         env, p
       | If (p, p1, p2) ->
-        let tmp = tmp_var () in
-        let _, b =
-          let return s = Printf.sprintf "%s %s = %s" (emit_type T.Bool) tmp s in
-          emit_prog ~return ~env p
+        let b, btmp =
+          match snd (emit_prog ~env p) with
+            | [x] -> [], x
+            | _ ->
+              let btmp = tmp_var () in
+              let _, b =
+                let return s = Printf.sprintf "%s %s = %s" (emit_type T.Bool) btmp s in
+                emit_prog ~return ~env p
+              in
+              let b = append_last ";" b in
+              b, btmp
         in
-        let b = append_last ";" b in
         let _, p1 = emit_prog ~return ~env p1 in
-        let _, p2 = emit_prog ~return ~env p2 in
-        env, b@[Printf.sprintf "if (%s) {\n%s;\n} else {\n%s;\n}" tmp (String.concat "\n" p1) (String.concat "\n" p2)]
+        let e =
+          if p2 = [] then "" else
+            let _, p2 = emit_prog ~return ~env p2 in
+            Printf.sprintf " else {\n%s;\n}" (String.concat "\n" p2)
+        in
+        env, b@[Printf.sprintf "if (%s) {\n%s;\n}%s" btmp (String.concat "\n" p1) e]
       | Op (op, args) ->
         let tmp_vars = ref [] in
         (* Precomputation of the arguments *)

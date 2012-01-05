@@ -1,7 +1,8 @@
 (** Builtin operations for SAML. *)
 
-module T = Lang_types
 module B = Saml_backend
+module V = Saml_values
+module T = V.T
 
 (** Operations necessary to define a builtin. *)
 type t = {
@@ -10,42 +11,30 @@ type t = {
   b_emit_c : string array -> string;
 }
 
-let builtins =
-  let b name =
-    let default_emit_c args =
-      let args = Array.to_list args in
-      let args = String.concat ", " args in
-      Printf.sprintf "%s(%s)" name args
-    in
-    fun ?(c=default_emit_c) typ ->
-      {
-        b_name = name;
-        b_type = typ;
-        b_emit_c = c;
-      }
-  in
-  let f_f = B.T.Arr ([B.T.Float], B.T.Float) in
-  let ff_f = B.T.Arr ([B.T.Float; B.T.Float], B.T.Float) in
-  let f_u = B.T.Arr ([B.T.Float], B.T.Void) in
-  let c_bop op args = Printf.sprintf "(%s %s %s)" args.(0) op args.(1) in
-  [
-    b "sin" f_f;
-    b "pow" ff_f;
-    b "fadd" ff_f ~c:(c_bop "+");
-    b "fmax" ff_f;
-    b "fmin" ff_f;
-    b "print_float" f_u ~c:(fun args -> Printf.sprintf "printf(\"%%f\\n\",%s)" args.(0));
-    b "frand" f_f ~c:(fun args -> Printf.sprintf "((float)rand()/(float)RAND_MAX*%s)" args.(0));
-  ]
-
-let () =
-  List.iter
-    (fun b ->
-      B.builtin_ops := (b.b_name, b.b_type) :: !B.builtin_ops;
-      B.Emitter_C.builtin_ops_emitters := (b.b_name, b.b_emit_c) :: !B.Emitter_C.builtin_ops_emitters
-    ) builtins
+let builtins = ref []
 
 open Lang_builtins
+
+let add_builtin ?c ~extern name targs tret =
+  let default_emit_c args =
+    let args = Array.to_list args in
+    let args = String.concat ", " args in
+    Printf.sprintf "%s(%s)" extern args
+  in
+  let b ?(c=default_emit_c) name =
+    let targs = List.map (fun (l,t,o,_) -> o<>None,l,t) targs in
+    let typ = V.emit_type (T.make (T.Arrow (targs, tret))) in
+    {
+      b_name = name;
+      b_type = typ;
+      b_emit_c = c;
+    }
+  in
+  builtins := (b ?c extern) :: !builtins;
+  add_builtin ~extern name targs tret
+
+(** C implementation of a binary operator. *)
+let c_bop op args = Printf.sprintf "(%s %s %s)" args.(0) op args.(1)
 
 let register_math () =
   add_builtin "math.sin" ~cat:Math ~descr:"Sin function." ~extern:"sin"
@@ -91,6 +80,7 @@ let register_math () =
       let y = Lang.to_float y in
       Lang.float (x ** y));
   add_builtin "math.random.float" ~cat:Math ~descr:"Random float." ~extern:"frand"
+    ~c:(fun args -> Printf.sprintf "((float)rand()/(float)RAND_MAX*%s)" args.(0))
     [ "",Lang.float_t,None,None ] Lang.float_t
     (fun p ->
       match (snd (List.hd p)).Lang.value with
@@ -100,32 +90,37 @@ let register_math () =
 let register_event () =
   Lang.add_builtin "event.channel" ~category:(string_of_category Control)
     ~descr:"Create an event channel."
-    ~extern:"event_channel"
-    [] (Lang.event_t (Lang.univ_t 1))
+    ~extern:"event.channel"
+    [] (T.event (Lang.univ_t 1))
     (fun p t ->
-      { Lang.t = t; value = Lang.Event_channel [] }
+      let t = T.event_type t in
+      if T.is_evar t then (T.deref t).T.descr <- T.Ground T.Unit;
+      assert (T.is_unit t);
+      { Lang.t = t; value = Lang.Ref (ref (Lang.bool false)) }
     );
-  add_builtin "event.handle" ~cat:Control ~descr:"Handle an event on a channel."
-    ~extern:"event_handle"
+  Lang.add_builtin "event.handle" ~category:(string_of_category Control)
+    ~descr:"Handle an event on a channel."
+    ~extern:"event.handle"
     [
-      "", Lang.event_t (Lang.univ_t 1), None, Some "Event channel.";
+      "", T.event (Lang.univ_t 1), None, Some "Event channel.";
       "", Lang.fun_t [false, "", Lang.univ_t 1] Lang.unit_t, None, Some "Handler function.";
     ] (Lang.unit_t)
-    (fun p ->
+    (fun p t ->
       let c = Lang.assoc "" 1 p in
       let h = Lang.assoc "" 2 p in
-      { Lang.t = Lang.unit_t; value = Lang.Event_handle(c,h) }
+      { Lang.t = Lang.unit_t; value = Lang.Unit }
     );
-  add_builtin "event.emit" ~cat:Control ~descr:"Emit an event on a channel."
-    ~extern:"event_emit"
+  Lang.add_builtin "event.emit" ~category:(string_of_category Control)
+    ~descr:"Emit an event on a channel."
+    ~extern:"event.emit"
     [
-      "", Lang.event_t (Lang.univ_t 1), None, Some "Event channel.";
+      "", T.event (Lang.univ_t 1), None, Some "Event channel.";
       "", Lang.univ_t 1, None, Some "Event data.";
     ] (Lang.unit_t)
-    (fun p ->
+    (fun p t ->
       let c = Lang.assoc "" 1 p in
       let v = Lang.assoc "" 2 p in
-      { Lang.t = Lang.unit_t; value = Lang.Event_emit(c,v) }
+      { Lang.t = Lang.unit_t; value = Lang.Unit }
     )
 
 let register_other () =
@@ -137,6 +132,7 @@ let register_other () =
       Lang.unit
     );
   add_builtin "print_float" ~cat:Control ~descr:"Print an integer." ~extern:"print_float"
+    ~c:(fun args -> Printf.sprintf "printf(\"%%f\\n\",%s)" args.(0))
     ["", Lang.float_t, None, None] Lang.unit_t
     (fun p ->
       let x = Lang.to_float (List.assoc "" p) in
@@ -148,4 +144,10 @@ let register () =
   Printf.printf "Registered SAML builtins.\n%!";
   register_math ();
   register_event ();
-  register_other ()
+  register_other ();
+  List.iter
+    (fun b ->
+      B.builtin_ops := (b.b_name, b.b_type) :: !B.builtin_ops;
+      B.Emitter_C.builtin_ops_emitters := (b.b_name, b.b_emit_c) :: !B.Emitter_C.builtin_ops_emitters
+    ) !builtins
+

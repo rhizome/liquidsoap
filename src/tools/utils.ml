@@ -56,6 +56,9 @@ module Stdlib = struct
 
     let diff l1 l2 =
       List.filter (fun x -> not (List.mem x l2)) l1
+
+    let union l1 l2 =
+      List.fold_left (fun l x -> if List.mem x l then l else x::l) l2 l1
   end
 end
 

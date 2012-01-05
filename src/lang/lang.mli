@@ -48,9 +48,6 @@ and in_value =
                full_env * full_env * Lang_values.term
   | FFI     of ffi
   | Quote   of (string * Lang_values.term) list * (string * Lang_values.V.value) list * Lang_values.term
-  | Event_channel of value list
-  | Event_handle of value * value
-  | Event_emit of value * value
 and ffi =
     {
       ffi_args : (string * string * value option) list;
@@ -197,8 +194,6 @@ val of_product_t : t -> t * t
 
 val list_t     : t -> t
 val of_list_t  : t -> t
-
-val event_t : t -> t
 
 val zero_t     : t
 val variable_t : t

@@ -66,7 +66,6 @@ def saml.gen.voice (f) =
     note_off = event.channel()
     #event.handle(note_off, fun (_) -> begin velocity := 0.; active := false end)
     desactivate = event.channel()
-    event.handle(desactivate, fun (_) -> active := false)
     def activate () = active := true end
     def is_active () = !active end
     def note () =
@@ -76,13 +75,18 @@ def saml.gen.voice (f) =
             desactivate = desactivate,
         ]
     end
+    def main =
+        x = f(note())
+        event.handle(desactivate, fun (_) -> active := false)
+        !velocity * x
+    end
     [
         set_freq = set_freq,
         set_velocity = set_velocity,
         note_off = fun () -> event.emit(note_off,()),
         activate = activate,
         is_active = is_active,
-        main = !velocity * f(note())
+        main = main,
     ]
 end
 

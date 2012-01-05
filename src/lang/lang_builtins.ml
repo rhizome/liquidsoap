@@ -1629,8 +1629,6 @@ let rec to_json_compact v =
     | Lang.FFI _
     | Lang.Fun _ -> "\"<fun>\""
     | Lang.Quote _ -> "\"<term>\""
-    | Lang.Event_channel _ -> "\"<channel>\""
-    | Lang.Event_handle _ | Lang.Event_emit _ -> "\"<fun>\""
 
 let rec to_json_pp f v =
   match v.Lang.value with
