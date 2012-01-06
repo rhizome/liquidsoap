@@ -190,8 +190,7 @@ and substs ss tm =
       | Var x ->
         let rec aux = function
           | (x',v)::ss when x' = x ->
-            (* TODO: too many free vars but correct *)
-            let tm = if free_vars v = [] then v else substs ss v in
+            let tm = if List.for_all (fun x -> not (List.mem_assoc x ss)) (free_vars v) then v else substs ss v in
             tm.term
           | _::ss -> aux ss
           | [] -> tm.term
@@ -212,7 +211,6 @@ and substs ss tm =
       | Let l ->
         let def = s l.def in
         let ss = List.remove_all_assoc l.var ss in
-        (* TODO: too many free vars but correct *)
         let s = substs ss in
         let var, body = if List.mem l.var (meta_vars @ !keep_vars) then l.var, l.body else fresh_let (fv ss) l in
         let body = s body in
