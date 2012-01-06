@@ -93,10 +93,21 @@ let register_event () =
     ~extern:"event.channel"
     [] (T.event (Lang.univ_t 1))
     (fun p t ->
-      let t = T.event_type t in
-      if T.is_evar t then (T.deref t).T.descr <- T.Ground T.Unit;
-      assert (T.is_unit t);
-      { Lang.t = t; value = Lang.Ref (ref (Lang.bool false)) }
+      let t' = T.event_type t in
+      if T.is_evar t' then (T.deref t').T.descr <- T.Ground T.Unit;
+      (* Work around reduction in values (necessary for default arguments for
+         instance. *)
+      let ffi =
+        {
+          Lang.
+          ffi_args = [];
+          ffi_applied = [];
+          ffi_eval = (fun _ _ -> Lang.unit);
+          ffi_meta = true;
+          ffi_external = Some "event.channeled"
+        }
+      in
+      { Lang.t = t; value = Lang.FFI ffi }
     );
   Lang.add_builtin "event.handle" ~category:(string_of_category Control)
     ~descr:"Handle an event on a channel."

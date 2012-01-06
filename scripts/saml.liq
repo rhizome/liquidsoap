@@ -6,10 +6,13 @@ saml.time = [=]
 
 def saml.time.integrator(~periodic=false,~reset=event.channel(),freq) =
     y = ref 0.
-    #event.handle(reset,fun (_) -> y:=0.)
+    event.handle(reset,fun (_) -> y:=0.)
     ans = !y
     y := !y + freq * period
-    #if periodic and !y >= 1. then y := !y mod 1. end
+    if periodic and !y >= 1. then
+       #event.emit(reset,())
+       y := !y mod 1.
+    end
     ans
 end
 
@@ -25,11 +28,11 @@ end
 saml.gen = [=]
 
 def saml.gen.sine(freq=1.) =
-    math.sin(2. * math.pi * saml.time.now(freq))
+    math.sin(2. * math.pi * saml.time.integrator(periodic=true,freq))
 end
 
 def saml.gen.saw(freq=1.) =
-    saml.time.now(freq) mod 1.
+    saml.time.integrator(periodic=true,freq) * 2. - 1.
 end
 
 def saml.gen.square(freq=1.) =
@@ -147,5 +150,10 @@ end
 # Events
 
 def event.every(e,freq) =
-    t = saml.time.integrator(freq)
+    reset = event.channel()
+    t = saml.time.integrator(reset=reset,freq)
+    if t >= 1. / freq then
+       event.emit(reset,())
+       event.emit(e,())
+    end
 end

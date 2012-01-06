@@ -148,10 +148,16 @@ def f () =
     #t = 6.
     t = now()
     c = event.channel()
+    event.handle(c, fun (_) -> r := t)
     event.emit(c,())
-    event.handle(c, fun (_) -> r := t)
-    event.handle(c, fun (_) -> r := t)
+    #event.handle(c, fun (_) -> r := t)
     1.
+end
+#saml.emit.generator.c(f())
+
+def h (e=event.channel()) = event.emit(e,()) 0. end
+def f () =
+    h()
 end
 #saml.emit.generator.c(f())
 
@@ -163,6 +169,7 @@ def osc () =
         if !y >= 1. then y := 0. end
         ans / 5.
     end
+    def f (freq) = gen.saw(freq) / 5. end
     def f (note) =
         x = f(note.freq)
         event.handle(note.note_off, fun(_) -> event.emit(note.desactivate, ()))
@@ -170,18 +177,37 @@ def osc () =
     end
     gen.voice(f)
 end
-saml.emit.generator.dssi.c(osc())
+#saml.emit.generator.dssi.c(osc())
 
 def osc () =
     def f (freq) = gen.saw(freq) end
     def f (note) =
-        #event.handle(note.note_off, fun(_) -> event.emit(note.desactivate, ()))
+        event.handle(note.note_off, fun(_) -> event.emit(note.desactivate, ()))
         freq = note.freq
-        x = env.adsr(a=0.005, d=0.001, r=0.05, note_off=note.note_off, desactivate=note.desactivate) * f(freq) / 5.
-        #x = filter.fo.low_pass(adsr(a=0.005, d=0.01, s=0.5) * 10000., x)
+        x = f(freq) / 5.
+        #x = env.adsr(a=0.005, d=0.001, r=0.05, note_off=note.note_off, desactivate=note.desactivate) * f(freq) / 5.
+        #x = filter.fo.low_pass(env.adsr(a=0.005, d=0.01, s=0.5) * 10000., x)
         x
     end
     gen.voice(f)
+end
+saml.emit.generator.dssi.c(osc())
+
+def osc () =
+    note_off = event.channel()
+    def f () =
+        r = 10./5.
+        event.handle(note_off, fun(_) -> print_float (r+r))
+        5.
+    end
+    [
+        set_freq = fun(_) -> (),
+        set_velocity = fun(_) -> (),
+        note_off = fun() -> event.emit(note_off,()),
+        activate = fun() -> (),
+        is_active = fun() -> true,
+        main = f(),
+    ]
 end
 #saml.emit.generator.dssi.c(osc())
 
