@@ -4,15 +4,16 @@ math.pi = 3.14159265358979323846
 
 saml.time = [=]
 
-def saml.time.integrator (~periodic=false,x) =
+def saml.time.integrator(~periodic=false,~reset=event.channel(),freq) =
     y = ref 0.
+    #event.handle(reset,fun (_) -> y:=0.)
     ans = !y
-    y := !y + x * period
+    y := !y + freq * period
     #if periodic and !y >= 1. then y := !y mod 1. end
     ans
 end
 
-def saml.time.now (freq=1.) = saml.time.integrator(freq) end
+def saml.time.now(freq=1.) = saml.time.integrator(freq) end
 
 def saml.time.frequencize (x,freq) =
     period = freq * period
@@ -81,6 +82,7 @@ def saml.gen.voice (f) =
         !velocity * x
     end
     [
+        #TODO: implement set_note along with set_freq
         set_freq = set_freq,
         set_velocity = set_velocity,
         note_off = fun () -> event.emit(note_off,()),
@@ -93,8 +95,6 @@ end
 # Envelopes
 
 saml.env = [=]
-
-#c = event.channel()
 
 def saml.env.adsr (~a=0.05,~d=0.02,~s=0.8,~r=0.01,~note_off=event.channel(),~desactivate=event.channel()) =
     t = saml.time.now()
@@ -141,4 +141,11 @@ def saml.filter.fo.low_pass (freq, x) =
     y = a * x + (1. - a) * !y'
     y' := y
     y
+end
+
+
+# Events
+
+def event.every(e,freq) =
+    t = saml.time.integrator(freq)
 end

@@ -181,20 +181,17 @@ let rec fresh_let fv l =
     l.var, l.body
 
 (** Apply a list of substitutions to a term. *)
-and substs ?(pure=false) ss tm =
-  let substs = substs ~pure in
-  let subs = subst ~pure in
-  (* Printf.printf "substs: %s\n%!" (print_term tm); *)
-  let s ?(ss=ss) = substs ss in
+and substs ss tm =
+  (* Printf.printf "substs: %s\n%!" (print_term ~no_records:true tm); *)
   let fv ss = List.fold_left (fun fv (_,v) -> (free_vars v)@fv) [] ss in
+  let s = substs ss in
   let term =
     match tm.term with
       | Var x ->
         let rec aux = function
           | (x',v)::ss when x' = x ->
-            let tm = substs ss v in
-            (* TODO... *)
-            (* if pure then assert (is_pure ~env:[] tm); *)
+            (* TODO: too many free vars but correct *)
+            let tm = if free_vars v = [] then v else substs ss v in
             tm.term
           | _::ss -> aux ss
           | [] -> tm.term
@@ -215,12 +212,13 @@ and substs ?(pure=false) ss tm =
       | Let l ->
         let def = s l.def in
         let ss = List.remove_all_assoc l.var ss in
-        let s = s ~ss in
-        let var, body = if not (List.mem l.var (meta_vars @ !keep_vars)) then fresh_let (fv ss) l else l.var, l.body in
+        (* TODO: too many free vars but correct *)
+        let s = substs ss in
+        let var, body = if List.mem l.var (meta_vars @ !keep_vars) then l.var, l.body else fresh_let (fv ss) l in
         let body = s body in
         let l = { l with var = var; def = def; body = body } in
         Let l
-      | Fun (vars,p,v) ->
+      | Fun (_,p,v) ->
         let ss = ref ss in
         let sp = ref [] in
         let p =
@@ -228,15 +226,14 @@ and substs ?(pure=false) ss tm =
             (fun (l,x,t,v) ->
               let x' = if List.mem x (fv !ss) then fresh_var () else x in
               ss := List.remove_all_assoc x !ss;
-              sp := (x, make_term (Var x')) :: !sp;
+              if x <> x' then sp := (x, make_term (Var x')) :: !sp;
               l,x',t,Utils.may s v
             ) p
         in
         let v = substs !sp v in
         let ss = !ss in
-        let v = s ~ss v in
-        (* TODO: alpha-convert vars too? *)
-        Fun (vars,p,v)
+        let v = substs ss v in
+        Fun (Vars.empty,p,v)
       | App (a,l) ->
         let a = s a in
         let l = List.map (fun (l,v) -> l, s v) l in
@@ -244,7 +241,7 @@ and substs ?(pure=false) ss tm =
   in
   make_term ~t:tm.t term
 
-and subst ?pure x v tm = substs ?pure [x,v] tm
+and subst x v tm = substs [x,v] tm
 
 (* Convert values to terms. This is a hack necessary becausse FFI are values and
    not terms (we should change this someday...). *)
@@ -308,8 +305,9 @@ let rec is_value ~env tm =
 type state =
     {
       refs : (string * term) list;
-      (* List of event variables. These have to be reset after each round. *)
-      events : string list;
+      (* List of event variables together with the currently known
+         handlers. These have to be reset after each round. *)
+      events : (string * term list) list;
     }
 
 let empty_state = { refs = [] ; events = [] }
@@ -350,10 +348,29 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) tm =
   (* Printf.printf "reduce: %s\n%!" (V.print_term tm); *)
   (* Printf.printf "reduce: %s : %s\n%!" (V.print_term tm) (T.print tm.t); *)
   let reduce ?(env=env) ?(bound_vars=bound_vars) = reduce ~env ~bound_vars in
+  let fresh_let ?(bv=[]) l =
+    (* TODO: I think that bv is not necessary because it is always included in
+       bound_vars, remove bv *)
+    let l = fresh_let (bv@bound_vars) l in
+    l
+  in
   let merge s1 s2 =
+    let events =
+      let l1 = List.map fst s1.events in
+      let l2 = List.map fst s2.events in
+      let l1 = List.filter (fun x -> not (List.mem x l2)) l1 in
+      let l = l1@l2 in
+      let a x l =
+        try
+          List.assoc x l
+        with
+          | Not_found -> []
+      in
+      List.map (fun x -> x, (a x s1.events)@(a x s2.events)) l
+    in
     {
       refs = s1.refs@s2.refs;
-      events = s1.events@s2.events;
+      events = events;
     }
   in
   let mk ?(t=tm.t) = make_term ~t in
@@ -381,7 +398,7 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) tm =
               | [x,_] -> x
               | _ -> assert false
           in
-          { s with events = x::s.events }
+          { s with events = (x,[])::s.events }
         in
         s, Fun (Vars.empty, [], e)
       | Var "event.handle" ->
@@ -423,11 +440,11 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) tm =
             o = 0 || (o = 1 && is_pure ~env def)
            )
         )
-        (* We can rename meta-variables here because we are in weak-head
-           reduction, so we know that any value using the meta-variable below
-           will already be substituted. *)
-        (* However, we have to keep the variables defined by lets that we want to
-           keep, which are also in meta_vars. *)
+          (* We can rename meta-variables here because we are in weak-head
+             reduction, so we know that any value using the meta-variable below
+             will already be substituted. *)
+          (* However, we have to keep the variables defined by lets that we want to
+             keep, which are also in meta_vars. *)
           && not (List.mem l.var !keep_vars)
         then
           let env = (l.var,def)::env in
@@ -435,9 +452,10 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) tm =
           let sbody, body = reduce ~env body in
           merge sdef sbody, body.term
         else
-          let var, body = fresh_let bound_vars l in
+          let var, body = fresh_let l in
           let env = (l.var,def)::env in
-          let sbody, body = reduce ~bound_vars:(var::bound_vars) ~env body in
+          let bound_vars = var::bound_vars in
+          let sbody, body = reduce ~env ~bound_vars body in
           let l = { l with var = var; def = def; body = body } in
           merge sdef sbody, Let l
       | Ref v ->
@@ -459,7 +477,7 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) tm =
             match a.term with
               | Unit -> b
               | Let l ->
-                let var, body = fresh_let (free_vars b) l in
+                let var, body = fresh_let ~bv:(free_vars b) l in
                 mk (Let { l with var = var; body = aux body })
               | _ -> mk (Seq (a, b))
           in
@@ -495,7 +513,7 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) tm =
               v
             | Let l ->
               let fv = match o with Some o -> free_vars o | None -> [] in
-              let var, body = fresh_let fv l in
+              let var, body = fresh_let ~bv:fv l in
               mk (Let { l with var = var ; body = aux body })
             | Seq (a, b) ->
               mk (Seq (a, aux b))
@@ -575,7 +593,7 @@ let rec reduce ?(env=[]) ?(bound_vars=[]) tm =
               )
             | Let l ->
               let fv = List.fold_left (fun fv (_,v) -> (free_vars v)@fv) [] a in
-              let var, body = fresh_let fv l in
+              let var, body = fresh_let ~bv:fv l in
               mk (Let { l with var = var ; body = aux body })
             | Seq (a, b) ->
               mk (Seq (a, aux b))
@@ -728,6 +746,13 @@ let rec emit_decl_prog tm =
       )
     | _ -> [], emit_prog tm
 
+let substs ss tm =
+  Printf.printf "substs: %s\n%!" (print_term tm);
+  Printf.printf "\nComputing substs (%d)... %!" (List.length ss);
+  let ans = substs ss tm in
+  Printf.printf "done!\n\n%!";
+  ans
+
 let emit name ?(keep_let=[]) ~env ~venv tm =
   keep_vars := keep_let;
   Printf.printf "emit: %s : %s\n\n%!" (V.print_term ~no_records:true tm) (T.print tm.t);
@@ -745,10 +770,11 @@ let emit name ?(keep_let=[]) ~env ~venv tm =
   in
   let env = env@venv in
   (* Printf.printf "env: %s\n%!" (String.concat " " (List.map fst env)); *)
-  let prog = substs env tm in
+  let prog = tm in
+  let prog = substs env prog in
   Printf.printf "closed term: %s\n\n%!" (print_term ~no_records:true prog);
   (* Reduce the term and compute references. *)
-  let state, prog = reduce prog in
+  let state, prog = reduce ~env prog in
   Printf.printf "reduced: %s\n\n%!" (print_term ~no_records:true prog);
 
   (* Compute the state. *)
@@ -765,7 +791,7 @@ let emit name ?(keep_let=[]) ~env ~venv tm =
   Printf.printf "\n\n";
   let prog =
     (* Reset the events. *)
-    let e = List.map (fun x -> B.Store ([B.Ident x], [B.Bool false])) state.events in
+    let e = List.map (fun (x,_) -> B.Store ([B.Ident x], [B.Bool false])) state.events in
     let rec aux = function
       | [x] -> e@[x]
       | x::xx -> x::(aux xx)

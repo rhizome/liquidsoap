@@ -156,6 +156,23 @@ end
 #saml.emit.generator.c(f())
 
 def osc () =
+    def f (freq) =
+        y = ref 0.
+        ans = !y
+        y := !y + freq * period
+        if !y >= 1. then y := 0. end
+        ans / 5.
+    end
+    def f (note) =
+        x = f(note.freq)
+        event.handle(note.note_off, fun(_) -> event.emit(note.desactivate, ()))
+        x
+    end
+    gen.voice(f)
+end
+saml.emit.generator.dssi.c(osc())
+
+def osc () =
     def f (freq) = gen.saw(freq) end
     def f (note) =
         #event.handle(note.note_off, fun(_) -> event.emit(note.desactivate, ()))
@@ -179,7 +196,7 @@ def osc () =
     def f (note) =
         #event.handle(note.note_off, fun(_) -> event.emit(note.desactivate, ()))
         freq = note.freq
-        freq = freq + gen.noise()
+        #freq = freq + gen.noise()
         #freq = freq*(1.+gen.sine(5.)/200. * pow(10.,now()*10.)/10.)
         freq = freq*(1.+gen.sine(5.)/200.)
         #r = 200./freq
@@ -192,7 +209,7 @@ def osc () =
     end
     gen.voice(f)
 end
-saml.emit.generator.dssi.c(osc())
+#saml.emit.generator.dssi.c(osc())
 
 #saml.emit.generator.c(osc().main)
 
