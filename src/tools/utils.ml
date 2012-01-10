@@ -59,6 +59,17 @@ module Stdlib = struct
 
     let union l1 l2 =
       List.fold_left (fun l x -> if List.mem x l then l else x::l) l2 l1
+
+    let fold_map f s l =
+      let s = ref s in
+      let l =
+        List.map
+          (fun x ->
+            let s', v = f !s x in
+            s := s';
+            v) l
+      in
+      !s, l
   end
 end
 

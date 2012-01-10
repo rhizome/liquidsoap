@@ -1161,7 +1161,7 @@ let () =
     ~category:(string_of_category Control)
     ~descr:"The basic conditional."
     ~flags:[Lang.Hidden]
-    ~extern:"if_then_else"
+    ~extern:"if"
     [ "",Lang.bool_t,None,None ;
       "then", Lang.fun_t [] (Lang.univ_t 1), None,None ;
       "else", Lang.fun_t [] (Lang.univ_t 1), None,None ]

@@ -16,10 +16,9 @@ def f () =
     r = ref (1.3)
     3. + !r
 end
+#saml.emit.generator.c(f())
 
 #saml.emit.generator.c(3. + 4.)
-
-#saml.emit.generator.c(f ())
 
 #saml.emit.generator.c(now() + 1.)
 
@@ -40,7 +39,6 @@ def f () =
     r = [ a = 3., b = .2 ]
     r.b
 end
-
 #saml.emit.generator.c(f())
 
 def f () =
@@ -50,7 +48,6 @@ def f () =
     event.emit(c,5.)
     !r
 end
-
 #saml.emit.generator.c(f())
 
 def f () =
@@ -66,7 +63,6 @@ def f () =
         note_off = fun () -> active := false,
     ]
 end
-
 #saml.emit.generator.dssi.c(f())
 
 def f () =
@@ -74,7 +70,7 @@ def f () =
         event.handle(note_off, fun(_)-> ())
         1.
     end
-    adsr()
+    if true then adsr() else 3. end
 end
 #saml.emit.generator.c(f())
 
@@ -83,6 +79,14 @@ def f () =
     def r () = [ a = !x ] end
     def f (r) = r.a end
     f(r())
+end
+#saml.emit.generator.c(f())
+
+def f () =
+    r = ref (0)
+    def t () = r := !r + 1 end
+    if !r == 0 then t () else () end
+    1.
 end
 #saml.emit.generator.c(f())
 
@@ -96,12 +100,23 @@ end
 #saml.emit.generator.c(f())
 
 def f () =
+    def g () =
+        #r = ref (3.)
+        y = if 5. >= 0. then 6. else 0. end
+        y
+    end
+    x = g ()
+    x
+end
+#saml.emit.generator.c(f())
+
+def f () =
     #t = 3.
     t = now()
     r = ref (5.)
     c = event.channel()
-    event.handle(c, fun (_) -> r := t)
     event.emit(c,())
+    event.handle(c, fun (_) -> r := t)
     1.
 end
 #saml.emit.generator.c(f())

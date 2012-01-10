@@ -27,12 +27,12 @@ end
 
 saml.gen = [=]
 
-def saml.gen.sine(freq=1.) =
-    math.sin(2. * math.pi * saml.time.integrator(periodic=true,freq))
-end
-
 def saml.gen.saw(freq=1.) =
     saml.time.integrator(periodic=true,freq) * 2. - 1.
+end
+
+def saml.gen.sine(freq=1.) =
+    math.sin(math.pi * saml.gen.saw(freq))
 end
 
 def saml.gen.square(freq=1.) =

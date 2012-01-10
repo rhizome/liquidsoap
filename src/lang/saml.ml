@@ -1,9 +1,9 @@
 (** SAML extensions of the language. *)
 
 module T = Lang_types
-module V = Lang_values
 module SB = Saml_backend
 module SV = Saml_values
+module V = SV.V
 
 let enabled = ref false
 
@@ -78,36 +78,36 @@ let register_builtins () =
         let synth = "#synth" in
         let prog = SV.make_field ~t:Lang.float_t (SV.make_var synth) "main" in
         let prog =
-          SV.make_let
+          V.make_let
             (name^"_set_freq")
             (SV.make_field ~t:(f_u ()) (SV.make_var synth) "set_freq")
             prog
         in
         let prog =
-          SV.make_let
+          V.make_let
             (name^"_set_velocity")
             (SV.make_field ~t:(f_u ()) (SV.make_var synth) "set_velocity")
             prog
         in
         let prog =
-          SV.make_let
+          V.make_let
             (name^"_note_off")
             (SV.make_field ~t:(zarr Lang.unit_t) (SV.make_var synth) "note_off")
             prog
         in
         let prog =
-          SV.make_let
+          V.make_let
             (name^"_is_active")
             (SV.make_field ~t:(zarr Lang.bool_t) (SV.make_var synth) "is_active")
             prog
         in
         let prog =
-          SV.make_let
+          V.make_let
             (name^"_activate")
             (SV.make_field ~t:(zarr Lang.unit_t) (SV.make_var synth) "activate")
             prog
         in
-        SV.make_let synth v prog
+        V.make_let synth v prog
       in
       let keep_let = [name^"_set_freq"; name^"_set_velocity";name^"_note_off";name^"_is_active";name^"_activate"] in
       let v = SV.emit name ~keep_let ~venv ~env v in
