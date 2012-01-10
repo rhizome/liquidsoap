@@ -1463,7 +1463,7 @@ let () =
   let handler_t = 
     Lang.record_t (Lang_types.fields_of_list fields) 
   in
-  add_builtin "harbor.http.register" ~cat:Liq
+  add_builtin "http.harbor.register" ~cat:Liq
     ~descr:"Register a HTTP handler on the harbor. \
            The given function receives a record containing \
            the full requested uri (e.g. res.uri=\"foo?var=bar\"), \
@@ -1523,7 +1523,7 @@ let () =
        Lang.unit)
 
 let () =
-  add_builtin "harbor.http.remove" ~cat:Liq
+  add_builtin "http.harbor.remove" ~cat:Liq
     ~descr:"Remove a registered HTTP handler on the harbor."
     [ "port",Lang.int_t,None,Some "Port to server.";
       "",Lang.string_t,None,Some "URI to serve." ]

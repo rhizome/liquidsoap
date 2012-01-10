@@ -16,7 +16,6 @@ def http.response(response) =
   status = codes[string_of(code)]
   headers = 
     if not ?response.data.stream then
-      # TODO: make sure that content-length is not already fixed..
       list.append([("Content-Length",
                     "#{string.length(static_data)}")],
                   headers)
@@ -52,16 +51,31 @@ end
 # Enable HTTP json-rpc handling on the given path.
 # @category Interaction
 # @param path Path to receive JSON-RPC requests.
+# @param ~port Port where JSON-RPC requests should be adressed.
 # @param ~headers Additional headers to add to the response, e.g. ["Access-Control-Allow-Origin","*"]
 # @param ~mime Content-types for JSON data.
-def harbor.http.json_rpc(~headers=[],~mime=["application/json"], path) =
-  # TODO: make sure that Content-Type is not already set..
-  headers = list.append([("Content-Type","application/json")], headers)
+def http.harbor.json_rpc(~port,path,~headers=[],~mime=["application/json"]) =
+  # JSON canonical mime is always the first element passed in "mime" list
+  canonical_mime = 
+    if list.length(mime) > 0 then
+      list.hd(mime)
+    else
+      "application/json"
+  end
+
+  # Add content-type is not already done
+  # A copy of headers with labels all in lowercase.
+  low_headers = list.map(fun (x) -> (string.case(fst(x)), snd(x)), headers)
+  headers = 
+    if list.mem_assoc("content-type", low_headers) then
+      headers
+    else
+      list.append([("Content-Type",canonical_mime)], headers)
+  end
+
   def json_rpc(request) =
-    # TODO: there is something fishy here..
-    request_headers = request.headers
-    # TODO: match also lower case..
-    content_type = request_headers["Content-Type"] 
+    low_req_headers = list.map(fun (x) -> (string.case(fst(x)), snd(x)), request.headers)
+    content_type = low_req_headers["content-type"] 
     response =
       [protocol = request.protocol,
        code     = 405,
@@ -81,6 +95,6 @@ def harbor.http.json_rpc(~headers=[],~mime=["application/json"], path) =
            data=[static=json.rpc.execute(request.data)]])
     end
   end
-  harbor.http.register(port=8005,path,json_rpc)
+  http.harbor.register(port=port, path, json_rpc)
 end
 %endif
