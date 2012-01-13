@@ -70,12 +70,12 @@ def http.harbor.json_rpc(~port,path,~headers=[],~mime=["application/json"]) =
     if list.mem_assoc("content-type", low_headers) then
       headers
     else
-      list.append([("Content-Type",canonical_mime)], headers)
+      list.append([("Content-Type","#{canonical_mime}; charset=utf-8")], headers)
   end
 
   def json_rpc(request) =
     low_req_headers = list.map(fun (x) -> (string.case(fst(x)), snd(x)), request.headers)
-    content_type = low_req_headers["content-type"] 
+    content_type = list.hd(string.split(separator=";",low_req_headers["content-type"]))
     response =
       [protocol = request.protocol,
        code     = 405,
