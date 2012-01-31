@@ -76,35 +76,35 @@ let register_builtins () =
       in
       let v =
         let synth = "#synth" in
-        let prog = SV.make_field ~t:Lang.float_t (SV.make_var synth) "main" in
+        let prog = SV.V.field ~t:Lang.float_t (SV.make_var synth) "main" in
         let prog =
           V.make_let
             (name^"_set_freq")
-            (SV.make_field ~t:(f_u ()) (SV.make_var synth) "set_freq")
+            (SV.V.field ~t:(f_u ()) (SV.make_var synth) "set_freq")
             prog
         in
         let prog =
           V.make_let
             (name^"_set_velocity")
-            (SV.make_field ~t:(f_u ()) (SV.make_var synth) "set_velocity")
+            (SV.V.field ~t:(f_u ()) (SV.make_var synth) "set_velocity")
             prog
         in
         let prog =
           V.make_let
             (name^"_note_off")
-            (SV.make_field ~t:(zarr Lang.unit_t) (SV.make_var synth) "note_off")
+            (SV.V.field ~t:(zarr Lang.unit_t) (SV.make_var synth) "note_off")
             prog
         in
         let prog =
           V.make_let
             (name^"_is_active")
-            (SV.make_field ~t:(zarr Lang.bool_t) (SV.make_var synth) "is_active")
+            (SV.V.field ~t:(zarr Lang.bool_t) (SV.make_var synth) "is_active")
             prog
         in
         let prog =
           V.make_let
             (name^"_activate")
-            (SV.make_field ~t:(zarr Lang.unit_t) (SV.make_var synth) "activate")
+            (SV.V.field ~t:(zarr Lang.unit_t) (SV.make_var synth) "activate")
             prog
         in
         V.make_let synth v prog

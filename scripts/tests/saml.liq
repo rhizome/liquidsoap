@@ -28,7 +28,7 @@ end
 
 def f (y) =
     x = ref (5.)
-    x := !x + 1.
+    x := !x + y
     !x
 end
 #saml.emit.generator.c(f(3.))
@@ -97,7 +97,7 @@ def f () =
     event.emit(c,())
     3.3
 end
-#saml.emit.generator.c(f())
+saml.emit.generator.c(f())
 
 def f () =
     def g () =
@@ -159,6 +159,15 @@ end
 #saml.emit.generator.c(f())
 
 def f () =
+    print_int(4)
+    c = event.channel()
+    event.handle(c, print_int)
+    event.emit(c, 5)
+    3.
+end
+#saml.emit.generator.c(f())
+
+def f () =
     r = ref (5.)
     #t = 6.
     t = now()
@@ -201,12 +210,12 @@ def osc () =
         freq = note.freq
         x = f(freq) / 5.
         #x = env.adsr(a=0.005, d=0.001, r=0.05, note_off=note.note_off, desactivate=note.desactivate) * f(freq) / 5.
-        #x = filter.fo.low_pass(env.adsr(a=0.005, d=0.01, s=0.5) * 10000., x)
+        #x = filter.fo.low_pass(env.adsr(a=0.1, d=0.1, s=0.01) * 10000., x)
         x
     end
     gen.voice(f)
 end
-saml.emit.generator.dssi.c(osc())
+#saml.emit.generator.dssi.c(osc())
 
 def osc () =
     note_off = event.channel()
@@ -251,15 +260,51 @@ def osc () =
     gen.voice(f)
 end
 #saml.emit.generator.dssi.c(osc())
-
 #saml.emit.generator.c(osc().main)
 
-def f () =
-    print_int(4)
-    c = event.channel()
-    event.handle(c, print_int)
-    event.emit(c, 5)
-    3.
-end
+def osc () =
+    def f (note) =
+        bip = event.channel()
+        event.every(bip, 1.)
+        event.handle(bip, fun(_) -> print_int(6))
 
+        x = gen.saw(note.freq) / 5.
+        event.handle(note.note_off, fun(_) -> event.emit(note.desactivate, ()))
+        x
+    end
+    gen.voice(f)
+end
+#saml.emit.generator.dssi.c(osc())
+
+def f() =
+    r = ref 0
+    def x =
+        r := !r + 1
+        3
+    end
+    6.
+end
+#saml.emit.generator.c(f())
+
+def f() =
+    def every(e,freq) =
+        reset = event.channel()
+        ignore(time.integrator(periodic=true, reset=reset, freq))
+        event.handle(reset, fun (_) -> event.emit(e,()))
+    end
+
+    bip = event.channel()
+    every(bip, 1.)
+    event.handle(bip, fun(_) -> print_int(6))
+    2.
+end
+#saml.emit.generator.c(f())
+
+def f() =
+    c = event.channel()
+    #event.emit(c,())
+    event.handle(c,fun(_)->print_int(3))
+    event.emit(c,())
+    5.
+end
 #saml.emit.generator.c(f())

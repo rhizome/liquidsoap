@@ -237,13 +237,15 @@ module Emitter_C = struct
       | If (p,p1,p2) -> prog_type ~env p1
       | Null t -> t
 
-  and prog_type ~env = function
-    | [] -> T.Void
-    | [e] -> expr_type ~env e
-    | (Let (x,p))::ee ->
-      let env = Env.add_var env (x,prog_type ~env p) in
-      prog_type ~env ee
-    | _::ee -> prog_type ~env ee
+  and prog_type ~env p =
+    (* Printf.printf "prog_type: %s\n%!" (print_prog p); *)
+    match p with
+      | [] -> T.Void
+      | [e] -> expr_type ~env e
+      | (Let (x,p))::ee ->
+        let env = Env.add_var env (x,prog_type ~env p) in
+        prog_type ~env ee
+      | _::ee -> prog_type ~env ee
 
   (** Rename a variable if necessary: it takes cares of the fact that in C a
       variable cannot be masked and moreover some charaters are forbidden in

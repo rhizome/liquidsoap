@@ -136,6 +136,7 @@ let register_event () =
 
 let register_other () =
   add_builtin "print_int" ~cat:Control ~descr:"Print an integer." ~extern:"print_int"
+    ~c:(fun args -> Printf.sprintf "printf(\"%%d\\n\",%s)" args.(0))
     ["", Lang.int_t, None, None] Lang.unit_t
     (fun p ->
       let n = Lang.to_int (List.assoc "" p) in
