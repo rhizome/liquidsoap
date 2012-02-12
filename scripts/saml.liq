@@ -9,11 +9,11 @@ def saml.time.integrator(~periodic=false,~reset=event.channel(),freq) =
 #    event.handle(reset,fun (_) -> y:=0.)
     ans = !y
     y := !y + freq * period
-#    if periodic and !y >= 1. then
-#       event.emit(reset,())
-#       # This is a much better approximation than 0...
-#       y := !y - 1.
-#    end
+    if periodic and !y >= 1. then
+       event.emit(reset,())
+       # This is a much better approximation than 0...
+       y := !y - 1.
+    end
     ans
 end
 

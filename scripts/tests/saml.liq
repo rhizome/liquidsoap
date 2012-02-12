@@ -57,7 +57,7 @@ def f () =
     [
         set_freq = fun (x) -> freq := x,
         set_velocity = fun (x) -> amp := x,
-        main = !amp * sin(2. * pi * !freq * now ()) / 2.,
+        main = !amp * sin(2. * pi * !freq * now ()) / 10.,
         activate = fun () -> active := true,
         is_active = fun () -> !active,
         note_off = fun () -> active := false,
@@ -97,7 +97,7 @@ def f () =
     event.emit(c,())
     3.3
 end
-saml.emit.generator.c(f())
+#saml.emit.generator.c(f())
 
 def f () =
     def g () =
@@ -201,7 +201,7 @@ def osc () =
     end
     gen.voice(f)
 end
-#saml.emit.generator.dssi.c(osc())
+saml.emit.generator.dssi.c(osc())
 
 def osc () =
     def f (freq) = gen.saw(freq) end
