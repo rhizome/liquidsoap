@@ -259,7 +259,7 @@ and substs ss tm =
         aux ss
       | Unit | Bool _ | Int _ | String _ | Float _ -> tm.term
       | Seq (a,b) -> Seq (s a, s b)
-      | Product (a,b) -> Product (a,b)
+      | Product (a,b) -> Product (s a, s b)
       | Ref r -> Ref (s r)
       | Get r -> Get (s r)
       | Set (r,v) -> Set (s r, s v)
@@ -789,6 +789,7 @@ let rec emit_type t =
     | T.Ground T.Bool -> B.T.Bool
     | T.Ground T.Float -> B.T.Float
     | T.Ground T.Int -> B.T.Int
+    | T.Product (t1, t2) -> B.T.Pair (emit_type t1, emit_type t2)
     | T.Constr { T.name = "ref"; params = [_,t] }
     | T.Constr { T.name = "event"; params = [_,t] } -> B.T.Ptr (emit_type t)
     | T.Arrow (args, t) ->

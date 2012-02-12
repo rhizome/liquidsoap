@@ -189,9 +189,10 @@ static void SAML_run_synth(LADSPA_Handle instance, unsigned long sample_count, s
       for (n = 0; n < h->first_inactive; n++)
         if (SAML_synth_is_active(h->state[n]))
           {
-            LADSPA_Data s = SAML_synth(h->state[n]);
-            h->output_l[pos] += s;
-            h->output_r[pos] += s;
+            /* LADSPA_Data s = SAML_synth(h->state[n]); */
+            pair_double_double s = SAML_synth(h->state[n]);
+            h->output_l[pos] += s.x;
+            h->output_r[pos] += s.y;
           }
     }
 }

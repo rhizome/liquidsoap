@@ -57,7 +57,7 @@ def f () =
     [
         set_freq = fun (x) -> freq := x,
         set_velocity = fun (x) -> amp := x,
-        main = !amp * sin(2. * pi * !freq * now ()) / 10.,
+        main = begin x = !amp * sin(2. * pi * !freq * now ()) / 10. (x,x) end,
         activate = fun () -> active := true,
         is_active = fun () -> !active,
         note_off = fun () -> active := false,
@@ -197,7 +197,7 @@ def osc () =
     def f (note) =
         x = f(note.freq)
         event.handle(note.note_off, fun(_) -> event.emit(note.desactivate, ()))
-        x
+        (x,x)
     end
     gen.voice(f)
 end
@@ -210,12 +210,14 @@ def osc () =
         freq = note.freq
         x = f(freq) / 5.
         x = env.adsr(a=0.005, d=0.001, r=0.5, note_off=note.note_off, desactivate=note.desactivate) * f(freq) / 5.
-        x = filter.fo.low_pass(env.adsr(a=0.1, d=0.1, s=0.03, r=0.1) * 10000., x)
-        x
+        x = filter.fo.low_pass(env.adsr(a=0.1, d=0.2, s=0.03, r=0.1) * 10000., x)
+        p = gen.sine(10.+math.random.float(2.*math.pi))/4.
+        stereo.pan(p,x)
+        #(x,x)
     end
     gen.voice(f)
 end
-#saml.emit.generator.dssi.c(osc())
+saml.emit.generator.dssi.c(osc())
 
 def osc () =
     note_off = event.channel()
@@ -255,7 +257,7 @@ def osc () =
         #x = x + gen.sine(note.freq) / 15.
         #x = x + env.adsr(a=0.01,d=0.01,s=0.005) * gen.noise() / 10.
         x = filter.fo.low_pass(env.adsr(a=0.005, d=0.01, s=0.5) * 10000., x)
-        x
+        (x,x)
     end
     gen.voice(f)
 end
@@ -270,7 +272,7 @@ def osc () =
 
         x = gen.saw(note.freq) / 5.
         event.handle(note.note_off, fun(_) -> event.emit(note.desactivate, ()))
-        x
+        (x,x)
     end
     gen.voice(f)
 end
@@ -313,4 +315,4 @@ def f() =
     x=fst((666.,777.))
     x
 end
-saml.emit.generator.c(f())
+#saml.emit.generator.c(f())

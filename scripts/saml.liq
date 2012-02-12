@@ -83,7 +83,7 @@ def saml.gen.voice (f) =
     def main =
         x = f(note())
         event.handle(desactivate, fun (_) -> active := false)
-        !velocity * x
+        (!velocity * fst(x), !velocity * snd(x))
     end
     [
         #TODO: implement set_note along with set_freq
@@ -147,6 +147,15 @@ def saml.filter.fo.low_pass (freq, x) =
     y
 end
 
+# Stereo
+saml.stereo = [=]
+
+# TODO: do a proper (non-linear) panning...
+def saml.stereo.pan(p,x) =
+    a = 1. - math.max (p, 0.)
+    b = 1. + math.min (p, 0.)
+    (a * x, b * x)
+end
 
 # Events
 

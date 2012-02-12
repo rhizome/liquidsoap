@@ -48,11 +48,12 @@ let register_builtins () =
       ignore (Sys.command (Printf.sprintf "gcc -O3 -g -c -Wall -Wno-unused-variable %s" fname));
       Lang.unit
     );
+
   let arr t1 t2 = T.make (T.Arrow([false,"",t1], t2)) in
   let zarr t = T.make (T.Arrow([], t)) in
   let f_u () = arr Lang.float_t Lang.unit_t in
   let voice_t =
-    let r = ["main", Lang.float_t] in
+    let r = ["main", Lang.product_t Lang.float_t Lang.float_t] in
     let r = List.map (fun (x,t) -> x, (([],t),false)) r in
     Lang.record_t ~row:true (T.Fields.of_list r)
   in
@@ -76,7 +77,7 @@ let register_builtins () =
       in
       let v =
         let synth = "#synth" in
-        let prog = SV.V.field ~t:Lang.float_t (SV.make_var synth) "main" in
+        let prog = SV.V.field ~t:(Lang.product_t Lang.float_t Lang.float_t) (SV.make_var synth) "main" in
         let prog =
           V.make_let
             (name^"_set_freq")
