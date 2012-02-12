@@ -908,12 +908,13 @@ let emit name ?(keep_let=[]) ~env ~venv tm =
   (* Reduce the term and compute references. *)
   let state, prog = reduce prog in
   Printf.printf "reduced: %s\n\n%!" (V.print prog);
+  (* Put definitions at toplevel. *)
+  let prog = top_let prog in
+  Printf.printf "top lets: %s\n\n%!" (V.to_string prog);
   (* Reduce events. *)
   let state = { empty_state with refs = state.refs } in (* TODO: is this useful? *)
   let state, prog = reduce ~events:true ~state prog in
   Printf.printf "evented: %s\n\n%!" (V.print prog);
-  let prog = top_let prog in
-  Printf.printf "top lets: %s\n\n%!" (V.to_string prog);
 
   (* Compute the state. *)
   let refs = List.rev state.refs in
