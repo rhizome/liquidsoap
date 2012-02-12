@@ -755,6 +755,9 @@ let rec top_let tm =
       | _ -> false
   in
   match tm.term with
+    | Let l when T.is_event l.def.t ->
+      (* We don't want to substitute let x = event.create () in ... *)
+      V.make ~t:tm.t (Let { l with body = top_let l.body })
     | Let l when not (List.mem l.var !keep_vars) && has_kept l.body ->
       let v = subst l.var l.def l.body in
       top_let v
