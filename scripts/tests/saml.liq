@@ -210,7 +210,7 @@ def osc () =
         freq = note.freq
         x = f(freq) / 5.
         x = env.adsr(a=0.005, d=0.001, r=0.5, note_off=note.note_off, desactivate=note.desactivate) * f(freq) / 5.
-        #x = filter.fo.low_pass(env.adsr(a=0.1, d=0.1, s=0.01) * 10000., x)
+        x = filter.fo.low_pass(env.adsr(a=0.1, d=0.1, s=0.01) * 10000., x)
         x
     end
     gen.voice(f)

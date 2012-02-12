@@ -453,14 +453,13 @@ let rec reduce ?(events=false) ?(state=empty_state) tm =
             | [x,v] -> { state with refs = (x,v)::state.refs; events = (x,[])::state.events }
             | _ -> assert false
         in
-        state, Fun (Vars.empty, [], e)
+        state, mk (Fun (Vars.empty, [], e))
       (* Hack in order for Liquidsoap reduction to work. *)
       | Var "event.channeled" when events ->
         let t = tm.t in
         let t = T.make (T.Arrow([],t)) in
-        let s, v = reduce ~state (mk ~t:T.unit (App (mk ~t (Var "event.channel"), []))) in
-        s, v.term
-      | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> state, tm.term
+        reduce ~state (mk ~t:T.unit (App (mk ~t (Var "event.channel"), [])))
+      | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> state, tm
       | Let l ->
         let state, def = reduce ~state l.def in
         if T.is_ref l.def.t || (events && T.is_event l.def.t) || (
@@ -495,25 +494,24 @@ let rec reduce ?(events=false) ?(state=empty_state) tm =
                 let body = subst var def body in
                 reduce ~state body
           in
-          let state, v = aux ~state def in
-          state, v.term
+          aux ~state def
         (* let body = subst l.var def l.body in *)
         (* let state, body = reduce ~state body in *)
         (* state, body.term *)
         else
           let state, body = reduce ~state l.body in
-          state, (V.make_let l.var def body).term
+          state, (V.make_let l.var def body)
       | Ref v ->
         let state, v = reduce ~state v in
         let x = fresh_ref () in
-        { state with refs = (x,v)::state.refs }, Var x
+        { state with refs = (x,v)::state.refs }, mk (Var x)
       | Get r ->
         let state, r = reduce ~state r in
-        state, Get r
+        state, mk (Get r)
       | Set (r,v) ->
         let state, r = reduce ~state r in
         let state, v = reduce ~state v in
-        state, Set (r, v)
+        state, mk (Set (r, v))
       | Seq (a, b) ->
         let state, b = reduce ~state b in
         let state, a = reduce ~state a in
@@ -522,8 +520,7 @@ let rec reduce ?(events=false) ?(state=empty_state) tm =
             | Unit -> state, b
             | _ -> state, mk (Seq (a, b))
         in
-        let state, v = aux ~state a in
-        state, v.term
+        aux ~state a
       (*
         let tm =
         let rec aux a =
@@ -541,7 +538,7 @@ let rec reduce ?(events=false) ?(state=empty_state) tm =
       | Record r ->
         (* Records get lazily evaluated in order not to generate variables for
            the whole standard library. *)
-        state, tm.term
+        state, tm
       | Field (r,x,o) ->
         let state, r = reduce ~state r in
         let rec aux ~state r =
@@ -559,14 +556,16 @@ let rec reduce ?(events=false) ?(state=empty_state) tm =
               let state, b = aux ~state b in
               state, mk (Seq (a, b))
         in
-        let state, term = aux ~state r in
-        state, term.term
+        aux ~state r
       | Fun (vars, args, v) ->
-        let state, v = if events then reduce ~state v else state, v in
-        (* We have to use weak head reduction because some refs might use the
-           arguments, e.g. fun (x) -> ref x. However, we need to reduce
-           toplevel declarations... *)
-        state, Fun (vars, args, v)
+        if events then
+          let state, v = reduce ~state v in
+          state, mk (Fun (vars, args, v))
+        else
+          (* We have to use weak head reduction because some refs might use the
+             arguments, e.g. fun (x) -> ref x. However, we need to reduce toplevel
+             declarations... *)
+          state, tm
       | App (f,a) ->
         let state, f = reduce ~state f in
         let state, a =
@@ -733,12 +732,12 @@ let rec reduce ?(events=false) ?(state=empty_state) tm =
                     state, mk (App (f, a))
               )
         in
-        let state, term = aux ~state f in
-        state, term.term
+        aux ~state f
   in
   (* Printf.printf "reduce: %s => %s\n%!" (V.print tm) (V.print (mk term)); *)
-  (* This is important in order to preserve types. *)
-  s, V.make ~t:tm.t term
+  (* We have to preserve types (this is needed because some types might be
+     instanciated e.g. id 3). *)
+  s, { term with t = tm.t }
 
 and beta_reduce tm =
   (* Printf.printf "beta_reduce: %s\n%!" (V.print tm); *)
@@ -843,7 +842,7 @@ let rec emit_prog tm =
       (B.Let (l.var, emit_prog l.def))::(emit_prog l.body)
     | Unit -> []
     | Int n -> [B.Int n]
-    | Fun _ -> assert false
+    | Fun _ -> failwith "Trying to emit a function, this should not happen."
     | Record _ ->
       (* We should not emit records since they are lazily evaluated (or
          evaluation should be forced somehow). *)
