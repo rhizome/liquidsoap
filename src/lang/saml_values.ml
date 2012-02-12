@@ -191,6 +191,7 @@ let rec free_vars tm =
     | Var x -> [x]
     | Unit | Bool _ | Int _ | String _ | Float _ -> []
     | Seq (a,b) -> u (fv a) (fv b)
+    | Product (a,b) -> u (fv a) (fv b)
     | Ref r | Get r -> fv r
     | Set (r,v) -> u (fv r) (fv v)
     | Record r -> T.Fields.fold (fun _ v f -> u (fv v.rval) f) r []
@@ -211,10 +212,25 @@ let occurences x tm =
   List.iter (fun y -> if y = x then incr ans) (free_vars tm);
   !ans
 
+(** A simple term: it does not cost to compute it multiple times. *)
 let rec is_simple tm =
   match tm.term with
     | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> true
     | _ -> false
+
+(* (\* TODO: more generic declaration of effect-free builtins... *\) *)
+(* let pure_builtins = ["add"; "sub"; "mul"; "div"; "fmax"] *)
+(* let pure_builtins = List.map (fun x -> builtin_prefix ^ x) pure_builtins *)
+
+(* (\** A pure term: does not contain any side effect. *\) *)
+(* let rec is_pure tm = *)
+  (* match tm.term with *)
+    (* | Var _ | Unit | Bool _ | Int _ | String _ | Float _ -> true *)
+    (* | App ({ term = Var x }, a) -> *)
+      (* Printf.printf "IP: %s\n" x; *)
+      (* List.mem x pure_builtins && List.for_all (fun (_,v) -> is_pure v) a *)
+    (* | _ -> false *)
+let is_pure tm = false
 
 let rec fresh_let fv l =
   let reserved = ["main"] in
@@ -243,6 +259,7 @@ and substs ss tm =
         aux ss
       | Unit | Bool _ | Int _ | String _ | Float _ -> tm.term
       | Seq (a,b) -> Seq (s a, s b)
+      | Product (a,b) -> Product (a,b)
       | Ref r -> Ref (s r)
       | Get r -> Get (s r)
       | Set (r,v) -> Set (s r, s v)
@@ -330,8 +347,8 @@ let rec term_of_value v =
         )
       | V.V.Fun (params, applied, venv, t) ->
         let params = List.map (fun (l,x,v) -> l,x,T.fresh_evar (),Utils.may term_of_value v) params in
-        let applied = List.may_map (fun (x,(_,v)) -> try Some (x,term_of_value v) with _ -> None) applied in
-        let venv = List.may_map (fun (x,(_,v)) -> try Some (x,term_of_value v) with _ -> None) venv in
+        let applied = List.may_map (fun (x,(_,v)) -> try Some (x,term_of_value v) with Failure _ -> None) applied in
+        let venv = List.may_map (fun (x,(_,v)) -> try Some (x,term_of_value v) with Failure _ -> None) venv in
         let venv = applied@venv in
         let t = substs venv t in
         (* TODO: fill vars? *)
@@ -468,7 +485,7 @@ let rec reduce ?(events=false) ?(state=empty_state) tm =
             | _ -> (* is_value ~env l.def *) false
           ) || (
             let o = occurences l.var l.body in
-            o = 0
+            o = 0 || (o = 1 && is_pure l.def)
            ) || is_simple l.def
         )
           (* We can rename meta-variables here because we are in weak-head
@@ -518,23 +535,14 @@ let rec reduce ?(events=false) ?(state=empty_state) tm =
         let rec aux ~state a =
           match a.term with
             | Unit -> state, b
+            | Let _ -> failwith "TODO"
             | _ -> state, mk (Seq (a, b))
         in
         aux ~state a
-      (*
-        let tm =
-        let rec aux a =
-        match a.term with
-        | Unit -> b
-        | Let l ->
-        let var, body = fresh_let (free_vars b) l in
-        mk (Let { l with var = var; body = aux body })
-        | _ -> mk (Seq (a, b))
-        in
-        (aux a).term
-        in
-        state, tm
-      *)
+      | Product (a,b) ->
+        let state, a = reduce ~state a in
+        let state, b = reduce ~state b in
+        state, mk (Product(a,b))
       | Record r ->
         (* Records get lazily evaluated in order not to generate variables for
            the whole standard library. *)
@@ -748,9 +756,10 @@ and beta_reduce tm =
 (* Ensure that kept lets are at toplevel: this handles situations such as let x
    = ... in let set_velocity = ... in .... *)
 let rec top_let tm =
+  let kept v = List.mem v !keep_vars in
   let rec has_kept tm =
     match tm.term with
-      | Let l -> List.mem l.var !keep_vars || has_kept l.body
+      | Let l -> kept l.var || has_kept l.body
       | _ -> false
   in
   match tm.term with
@@ -760,6 +769,16 @@ let rec top_let tm =
     | Let l when not (List.mem l.var !keep_vars) && has_kept l.body ->
       let v = subst l.var l.def l.body in
       top_let v
+    | Seq (a, b) ->
+      let b = top_let b in
+      (
+        match b.term with
+          | Let l when kept l.var ->
+            let body = l.body in
+            let body = top_let (V.seq ~t:body.t a body) in
+            V.make_let ~t:b.t l.var l.def body
+          | _ -> tm
+      )
     | _ ->
       beta_reduce tm
 
@@ -797,6 +816,7 @@ let rec emit_prog tm =
     | Get r -> [B.Load (emit_prog r)]
     | Set (r,v) -> [B.Store (emit_prog r, emit_prog v)]
     | Seq (a,b) -> (emit_prog a)@(emit_prog b)
+    | Product (a,b) -> [B.Pair (emit_prog a, emit_prog b)]
     | App _ ->
       let x, l = focalize_app tm in
       (
@@ -812,7 +832,10 @@ let rec emit_prog tm =
                   let p1 = br (List.assoc "then" l) in
                   let p2 = br (List.assoc "else" l) in
                   let p, p1, p2 = emit_prog p, emit_prog p1, emit_prog p2 in
-                  [ B.If (p, p1, p2)]
+                  [B.If (p, p1, p2)]
+                (* TODO: other types *)
+                | "fst" -> [B.Op (B.Call "fst_float_float", [|emit_prog (snd (List.hd l))|])]
+                | "snd" -> [B.Op (B.Call "snd_float_float", [|emit_prog (snd (List.hd l))|])]
                 | _ ->
                   let l = List.map (fun (l,v) -> assert (l = ""); emit_prog v) l in
                   let l = Array.of_list l in
@@ -917,6 +940,9 @@ let emit name ?(keep_let=[]) ~env ~venv tm =
   let state = { empty_state with refs = state.refs } in (* TODO: is this useful? *)
   let state, prog = reduce ~events:true ~state prog in
   Printf.printf "evented: %s\n\n%!" (V.print prog);
+  (* Put definitions at toplevel. *)
+  let prog = top_let prog in
+  Printf.printf "top lets: %s\n\n%!" (V.to_string prog);
 
   (* Compute the state. *)
   let refs = List.rev state.refs in

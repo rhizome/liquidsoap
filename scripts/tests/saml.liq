@@ -210,12 +210,12 @@ def osc () =
         freq = note.freq
         x = f(freq) / 5.
         x = env.adsr(a=0.005, d=0.001, r=0.5, note_off=note.note_off, desactivate=note.desactivate) * f(freq) / 5.
-        x = filter.fo.low_pass(env.adsr(a=0.1, d=0.1, s=0.01) * 10000., x)
+        x = filter.fo.low_pass(env.adsr(a=0.1, d=0.1, s=0.03, r=0.1) * 10000., x)
         x
     end
     gen.voice(f)
 end
-saml.emit.generator.dssi.c(osc())
+#saml.emit.generator.dssi.c(osc())
 
 def osc () =
     note_off = event.channel()
@@ -252,7 +252,7 @@ def osc () =
         #r = 200./freq
         #freq = freq+(random.float(r)-r/2.)*4.
         x = env.adsr(a=0.005, d=0.001, r=0.05, note_off=note.note_off, desactivate=note.desactivate) * f(freq) / 5.
-        x = x + gen.sine(note.freq) / 15.
+        #x = x + gen.sine(note.freq) / 15.
         #x = x + env.adsr(a=0.01,d=0.01,s=0.005) * gen.noise() / 10.
         x = filter.fo.low_pass(env.adsr(a=0.005, d=0.01, s=0.5) * 10000., x)
         x
@@ -308,3 +308,9 @@ def f() =
     5.
 end
 #saml.emit.generator.c(f())
+
+def f() =
+    x=fst((666.,777.))
+    x
+end
+saml.emit.generator.c(f())

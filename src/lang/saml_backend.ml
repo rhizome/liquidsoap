@@ -10,6 +10,7 @@ module T = struct
     | Bool
     | Int
     | Float
+    | Pair of t * t
     | Ptr of t
     | Struct of (string * t) list
     (** An external type identifier (e.g. defined in an include). *)
@@ -21,6 +22,7 @@ module T = struct
     | Bool -> "bool"
     | Int -> "int"
     | Float -> "float"
+    | Pair (t1, t2) -> Printf.sprintf "%s * %s" (print t1) (print t2)
     | Ptr t -> Printf.sprintf "%s ptr" (print t)
     | Struct _ -> "struct{...}"
     | Ident x -> x
@@ -44,6 +46,7 @@ type expr =
   | Float of float
   | Bool of bool
   | Ident of string
+  | Pair of prog * prog
   | Alloc of T.t
   | Free of prog
   (** [Load p] loads memory pointed by p. *)
@@ -89,6 +92,7 @@ let rec print_expr = function
   | Float f -> Printf.sprintf "%f" f
   | Bool b -> Printf.sprintf "%B" b
   | Ident x -> x
+  | Pair (a,b) -> Printf.sprintf "(%s,%s)" (print_prog a) (print_prog b)
   | Alloc t -> Printf.sprintf "alloc{%s}" (T.print t)
   | Free p -> Printf.sprintf "free(%s)" (print_prog p)
   | Load p -> Printf.sprintf "load(%s)" (print_prog p)
@@ -126,12 +130,22 @@ let print_decls d =
   String.concat "\n" d
 
 (** Types of builtin ops. *)
-let builtin_ops = ref []
+let builtin_ops =
+  ref
+    [
+      "fst_float_float", T.Arr([T.Pair(T.Float,T.Float)],T.Float);
+      "snd_float_float", T.Arr([T.Pair(T.Float,T.Float)],T.Float);
+    ]
 
 (** Emit C code. *)
 module Emitter_C = struct
   (** Emitters for builtin ops. *)
-  let builtin_ops_emitters = ref []
+  let builtin_ops_emitters =
+    ref
+      [
+        "fst_float_float", (fun a -> Printf.sprintf "(%s).x" a.(0));
+        "snd_float_float", (fun a -> Printf.sprintf "(%s).y" a.(0));
+      ]
 
   module Env = struct
     type t =
@@ -147,6 +161,9 @@ module Emitter_C = struct
     (* TODO: implement this in a functional way *)
     (* TODO: (T.t * string) list instead of (string * string) list*)
     let type_decls = ref []
+
+    let clear_type_decls () =
+      type_decls := []
 
     let add_var env (v,t) =
       { env with vars = (v,t)::env.vars; used_vars = v::env.used_vars }
@@ -213,6 +230,7 @@ module Emitter_C = struct
       | Int _ -> T.Int
       | Float _ -> T.Float
       | Bool _ -> T.Bool
+      | Pair (a, b) -> T.Pair (prog_type ~env a, prog_type ~env b)
       | Alloc t -> T.Ptr t
       | Free _ -> T.Void
       | Load r ->
@@ -291,7 +309,8 @@ module Emitter_C = struct
       | T.Void -> "void"
       | T.Bool -> "int"
       | T.Int -> "int"
-      | T.Float -> "float"
+      | T.Float -> "double"
+      | T.Pair (t1,t2) -> Printf.sprintf "pair_%s_%s" (emit_type t1) (emit_type t2)
       | T.Struct s ->
         let t = List.map (fun (x,t) -> Printf.sprintf "%s %s;" (emit_type t) x) s in
         let t = String.concat " " t in
@@ -307,7 +326,8 @@ module Emitter_C = struct
       incr n;
       Printf.sprintf "saml_tmp%d" !n
 
-  (* used_vars should be propagated everwhere as done in the let case *)
+  (* TODO: Used_vars should be propagated everwhere as done in the let case (we
+     should add a separate environment for renaming). *)
   let rec emit_expr ?(return=fun s->s) ~env e =
     (* Printf.printf "emit_expr: %s\n%!" (print_expr e); *)
     let decl x t = Printf.sprintf "%s %s;" (emit_type t) x in
@@ -348,6 +368,15 @@ module Emitter_C = struct
       | Ident x ->
         let x = Env.ident env x in
         env, [return (Printf.sprintf "%s" x)]
+      | Pair (a,b) ->
+        let t = expr_type ~env e in
+        let tmpa = tmp_var () in
+        let tmpb = tmp_var () in
+        let ret t tmp s = Printf.sprintf "%s %s = %s" (emit_type t) tmp s in
+        (* TODO: define an aux function for this *)
+        let a = append_last ";" (snd (emit_prog ~return:(ret (prog_type ~env a) tmpa) ~env a)) in
+        let b = append_last ";" (snd (emit_prog ~return:(ret (prog_type ~env b) tmpb) ~env b)) in
+        env, a@b@[return (Printf.sprintf "((%s){%s,%s})" (emit_type t) tmpa tmpb)]
       | Address_of p ->
         let return = r (fun s -> "&" ^ s) in
         let _, p = emit_prog ~return ~env p in
@@ -410,6 +439,8 @@ module Emitter_C = struct
                   | _ ->
                     let tmp = tmp_var () in
                     let return s = Printf.sprintf "%s = %s" tmp s in
+                    (* TODO: why do we keep the env here and nowhere else? Check
+                       this... *)
                     let env', p = emit_prog ~return ~env:!env p in
                     let p = append_last ";" p in
                     env := env';
@@ -499,10 +530,11 @@ module Emitter_C = struct
   (** Emit global type declarations. *)
   let emit_type_decls () =
     let td = List.map (fun (t,tn) -> Printf.sprintf "typedef %s %s;" t tn) !Env.type_decls in
+    let td = "typedef struct { double x; double y; } pair_double_double;"::td in
     String.concat "\n\n" td
 
   let emit_decls ?(env=Env.create ()) d =
-    Env.type_decls := [];
+    Env.clear_type_decls ();
     let env = ref env in
     let d =
       List.map
@@ -543,7 +575,7 @@ module Emitter_C = struct
     let d = List.map (emit_decl ~env) d in
     String.concat "\n\n" d
     *)
-    Env.type_decls := [];
+    Env.clear_type_decls ();
     let env = Env.create ?vars:env () in
     let d = emit_decls ~env d in
     let ans = d ^ "\n\n" in
