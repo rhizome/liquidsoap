@@ -78,15 +78,52 @@ end
 
 (** Fade-out after every frame.
   * If the final flag is set, the fade-out happens as of instantiation
-  * and the source becomes unavailable once it's finished. *)
+  * and the source becomes unavailable once it's finished.
+  * The final fader also #leaves its source as soon as it is done
+  * with it, to let it shutdown and cleanup. *)
 class fade_out ~kind
   ?(meta="liq_fade_out") ?(final=false) duration fader source =
 object (self)
 
-  inherit operator ~name:"fade_out" kind [source] as super
+  (** Hide our child source so we can treat it specially. *)
+  inherit source ~name:"fade_in" kind as super
 
-  method stype = if final then Fallible else source#stype
-  method abort_track = source#abort_track
+  (** Activation stuff *)
+
+  (** Keep a reference to the source, only if we still need it, so the
+    * garbage collector can get rid of it otherwise.
+    * If the operator is re-used and it has already shutdown its source,
+    * it'll have no source anymore. This shouldn't be too surprising
+    * given the use of final fade. *)
+  val mutable source : source option = Some source
+
+  method private wake_up act =
+    match source with
+      | Some s -> s#get_ready ((self:>source)::act)
+      | None -> ()
+
+  method private set_clock =
+    match source with
+      | Some s -> Clock_variables.unify self#clock s#clock
+      | None -> ()
+
+  method private sleep = self#leave_source
+
+  method private leave_source =
+    match source with
+      | Some src ->
+          src#leave (self:>source) ;
+          source <- None
+      | None -> ()
+
+  (** Streaming *)
+
+  method stype = if final then Fallible else (Utils.get_some source)#stype
+
+  method abort_track =
+    match source with
+      | Some s -> s#abort_track
+      | None -> ()
 
   (* Fade-out length (in samples) for the current track.
    * The value is set at the beginning of every track,
@@ -97,15 +134,28 @@ object (self)
   val mutable remaining = Frame.audio_of_seconds duration
 
   method remaining =
-    if final then Frame.master_of_audio remaining else source#remaining
+    if final then Frame.master_of_audio remaining else
+      match source with
+        | Some src -> src#remaining
+        | None -> 0
 
-  method is_ready = (remaining > 0 || not final) && source#is_ready
+  method is_ready =
+    (* if final then source <> None else
+      (Utils.get_some source)#is_ready *)
+    (remaining > 0 || not final) &&
+    match source with
+      | Some s -> s#is_ready
+      | None -> false
 
   method private get_frame ab =
-    if final && remaining <= 0 then
+    match source with None -> assert false | Some source ->
+    if final && remaining <= 0 then begin
+      self#log#f 3
+        "End of final fade: terminating stream and releasing the source..." ;
       (* This happens in final mode at the end of the remaining time. *)
+      self#leave_source ;
       Frame.add_break ab (Frame.position ab)
-    else
+    end else
       let n = Frame.audio_of_master source#remaining in
       let offset1 = AFrame.position ab in
       let offset2 = source#get ab ; AFrame.position ab in
