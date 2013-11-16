@@ -77,6 +77,11 @@ type source_t = Fallible | Infallible
   * according to its sources' clocks. Eventually, all remaining unknown clocks
   * are forced to wallclock. *)
 
+type tick = bool
+let tick_zero = false
+let next_tick = not
+let int_of_tick = function false -> 0 | true -> 1
+
 class type ['a,'b] proto_clock =
 object
 
@@ -93,7 +98,7 @@ object
   method sub_clocks : 'b list
 
   method start_outputs : ('a -> bool) -> unit -> 'a list
-  method get_tick : int
+  method get_tick : tick
   method end_tick : unit
 
 end
@@ -619,7 +624,7 @@ object
   method attach_clock : clock_variable -> unit
   method sub_clocks : clock_variable list
   method start_outputs : (active_source -> bool) -> unit -> active_source list
-  method get_tick : int
+  method get_tick : tick
   method end_tick : unit
 end
 

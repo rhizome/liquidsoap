@@ -249,7 +249,7 @@ let () =
              (fun clock l ->
                 Lang.product
                   (Lang.string clock#id)
-                  (Lang.int clock#get_tick)
+                  (Lang.int (Source.int_of_tick clock#get_tick))
                 :: l)
              []
          in

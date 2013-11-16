@@ -136,8 +136,8 @@ object (self)
 
   (* Intermediate for buffering the source's stream. *)
   val buf_frame = Frame.create kind
-  val mutable master_time = 0
-  val mutable last_slave_tick = 0 (* in master time *)
+  val mutable master_time = Source.tick_zero
+  val mutable last_slave_tick = Source.tick_zero (* in master time *)
 
   (* Indicate that the source should be managed by relaying master ticks,
    * and it has been used during the current tick, so it should be ticked

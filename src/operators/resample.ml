@@ -83,8 +83,8 @@ object (self)
     * slave clock. *)
 
   val frame = Frame.create kind
-  val mutable master_time = 0
-  val mutable last_slave_tick = 0 (* in master time *)
+  val mutable master_time = Source.tick_zero
+  val mutable last_slave_tick = Source.tick_zero (* in master time *)
 
   method private slave_tick =
     (Clock.get source#clock)#end_tick ;

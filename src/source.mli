@@ -176,6 +176,11 @@ val iterate_new_outputs : (active_source -> unit) -> unit
   * current one. Booleans should be OK, in any case an overflow on int
   * is not a problem. *)
 
+type tick
+val tick_zero : tick
+val next_tick : tick -> tick
+val int_of_tick : tick -> int
+
 class type clock =
 object
   (** Identifier of the clock. *)
@@ -191,7 +196,7 @@ object
   method sub_clocks : clock_variable list
 
   method start_outputs : (active_source -> bool) -> unit -> active_source list
-  method get_tick : int
+  method get_tick : tick
   method end_tick : unit
 end
 

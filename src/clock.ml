@@ -127,7 +127,7 @@ object (self)
   method attach_clock c =
     if not (List.mem c sub_clocks) then sub_clocks <- c::sub_clocks
 
-  val mutable round = 0
+  val mutable round = Source.tick_zero
 
   method get_tick = round
 
@@ -182,7 +182,7 @@ object (self)
            * be able to leave all sources. *)
           if not allow_streaming_errors#get then Tutils.shutdown ()
         end ;
-        round <- round + 1 ;
+        round <- Source.next_tick round ;
         List.iter (fun s -> s#after_output) active
 
   method start_outputs f =
