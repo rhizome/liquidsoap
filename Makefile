@@ -50,7 +50,6 @@ endif
 	@echo "let vendor = \
                   Printf.sprintf \"Liquidsoap/%s (%s; OCaml %s)\" \
                      version Sys.os_type Sys.ocaml_version" >> src/configure.ml
-	@echo "let () = Printexc.record_backtrace true" >> src/configure.ml
 	@echo "let path = \
           let s = try Sys.getenv \"PATH\" with Not_found -> \"\" in \
           bin_dir :: (Str.split (Str.regexp_string \":\") s)" >> src/configure.ml

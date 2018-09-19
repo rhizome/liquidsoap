@@ -133,37 +133,6 @@ def fallback.skip(~input,f)
   fallback(track_sensitive=false,transitions=[transition,transition],[input,f])
 end
 
-# Compress and normalize, producing a more uniform and "full" sound.
-# @category Source / Sound Processing
-# @param s The input source.
-def nrj(s)
-  compress(threshold=-15.,ratio=3.,gain=3.,normalize(s))
-end
-
-# Multiband-compression.
-# @category Source / Sound Processing
-# @param s The input source.
-def sky(s)
-  # 3-band crossover
-  low = filter.iir.eq.low(frequency = 168.)
-  mh = filter.iir.eq.high(frequency = 100.)
-  mid = filter.iir.eq.low(frequency = 1800.)
-  high = filter.iir.eq.high(frequency = 1366.)
-
-  # Add back
-  add(normalize = false,
-      [ compress(attack = 100., release = 200., threshold = -20.,
-                 ratio = 6., gain = 6.7, knee = 0.3,
-                 low(s)),
-        compress(attack = 100., release = 200., threshold = -20.,
-                 ratio = 6., gain = 6.7, knee = 0.3,
-                 mid(mh(s))),
-        compress(attack = 100., release = 200., threshold = -20.,
-                 ratio = 6., gain = 6.7, knee = 0.3,
-                 high(s))
-      ])
-end
-
 # Simple crossfade.
 # @category Source / Track Processing
 # @param ~start_next Duration in seconds of the crossed end of track.

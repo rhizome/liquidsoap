@@ -118,12 +118,12 @@ operators = \
 	operators/sequence.ml operators/cross.ml operators/smartcross.ml \
 	operators/compress_exp.ml operators/pitch.ml operators/pipe.ml \
 	operators/fir_filter.ml operators/iir_filter.ml operators/filter_rc.ml \
-	operators/biquad_filter.ml operators/cuepoint.ml \
+	operators/cuepoint.ml \
 	operators/map_op.ml operators/flanger.ml operators/comb.ml \
-	operators/compress.ml operators/clip.ml operators/filter.ml \
-	operators/setvol.ml operators/normalize.ml operators/echo.ml \
+	operators/clip.ml operators/filter.ml \
+	operators/setvol.ml operators/normalize.ml \
 	operators/append.ml operators/pan.ml operators/ms_stereo.ml \
-	operators/dyn_op.ml operators/video_effects.ml operators/video_fade.ml \
+	operators/dyn_op.ml operators/video_fade.ml \
 	operators/noblank.ml operators/compand.ml operators/on_offset.ml \
 	operators/mixing_table.ml operators/prepend.ml \
 	operators/midi_routing.ml operators/sleeper.ml \
